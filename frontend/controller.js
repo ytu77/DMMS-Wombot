@@ -1,3 +1,6 @@
+let lastSendTime = 0;
+const SEND_INTERVAL = 50; // 50 ms = 20 Hz
+
 const DEADZONE = 0.08;
 
 function applyDeadzone(value) {
@@ -33,8 +36,14 @@ function readController() {
         const throttle = applyDeadzone(-controller.axes[1]);
         const steering = applyDeadzone(controller.axes[0]);
 
-        if (typeof sendDriveInput === "function") {
-            sendDriveInput(throttle, steering);
+        const now = performance.now();
+
+        if (now - lastSendTime >= SEND_INTERVAL) {
+            if (typeof sendDriveInput === "function") {
+                sendDriveInput(throttle, steering);
+            }
+
+            lastSendTime = now;
         }
 
         console.log(
