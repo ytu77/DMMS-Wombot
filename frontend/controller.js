@@ -14,6 +14,7 @@ function applyDeadzone(value) {
 console.log("controller.js loaded");
 
 let controller = null;
+let controllerWasDetected = false;
 
 function findController() {
     const gamepads = navigator.getGamepads();
@@ -32,6 +33,9 @@ function readController() {
     controller = findController();
 
     if (controller) {
+
+        controllerWasDetected = true;
+
         document.getElementById("controllerStatus").textContent =
             "Controller: 🟢 Connected";
 
@@ -47,6 +51,7 @@ function readController() {
         const now = performance.now();
 
         if (now - lastSendTime >= SEND_INTERVAL) {
+
             if (typeof sendDriveInput === "function") {
                 sendDriveInput(throttle, steering);
             }
@@ -58,10 +63,16 @@ function readController() {
             `Throttle: ${throttle.toFixed(2)} | ` +
             `Steering: ${steering.toFixed(2)}`
         );
+
     } else {
 
-        document.getElementById("controllerStatus").textContent =
-            "Controller: 🔴 Disconnected";
+        if (controllerWasDetected) {
+            document.getElementById("controllerStatus").textContent =
+                "Controller: 🔴 Disconnected";
+        } else {
+            document.getElementById("controllerStatus").textContent =
+                "Controller: 🟡 Waiting...";
+        }
 
         document.getElementById("throttleStatus").textContent =
             "Throttle: 0.00";
@@ -74,29 +85,30 @@ function readController() {
 }
 
 window.addEventListener("gamepadconnected", (event) => {
-    window.addEventListener("gamepadconnected", (event) => {
-        console.log("Controller connected:", event.gamepad.id);
 
-        document.getElementById("controllerStatus").textContent =
-            "Controller: 🟢 Connected";
-    });
+    console.log("Controller connected:", event.gamepad.id);
+
+    controller = event.gamepad;
+    controllerWasDetected = true;
+
+    document.getElementById("controllerStatus").textContent =
+        "Controller: 🟢 Connected";
 });
 
 window.addEventListener("gamepaddisconnected", (event) => {
-    window.addEventListener("gamepaddisconnected", (event) => {
-        console.log("Controller disconnected:", event.gamepad.id);
 
-        controller = null;
+    console.log("Controller disconnected:", event.gamepad.id);
 
-        document.getElementById("controllerStatus").textContent =
-            "Controller: 🔴 Disconnected";
+    controller = null;
 
-        document.getElementById("throttleStatus").textContent =
-            "Throttle: 0.00";
+    document.getElementById("controllerStatus").textContent =
+        "Controller: 🔴 Disconnected";
 
-        document.getElementById("steeringStatus").textContent =
-            "Steering: 0.00";
-    });
+    document.getElementById("throttleStatus").textContent =
+        "Throttle: 0.00";
+
+    document.getElementById("steeringStatus").textContent =
+        "Steering: 0.00";
 });
 
 requestAnimationFrame(readController);
