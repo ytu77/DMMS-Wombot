@@ -15,9 +15,15 @@ function sendCommand(command) {
 }
 
 function sendDriveInput(throttle, steering) {
-    sendCommand({
-        type: "drive_input",
+    if (socket.readyState !== WebSocket.OPEN) {
+        return;
+    }
+
+    const command = {
+        type: "drive",
         throttle: throttle,
         steering: steering
-    });
+    };
+
+    socket.send(JSON.stringify(command));
 }
