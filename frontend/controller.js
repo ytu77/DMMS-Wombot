@@ -32,6 +32,8 @@ function readController() {
     controller = findController();
 
     if (controller) {
+        document.getElementById("controllerStatus").textContent =
+            "Controller: 🟢 Connected";
 
         const throttle = applyDeadzone(-controller.axes[1]);
         const steering = applyDeadzone(controller.axes[0]);
@@ -56,6 +58,16 @@ function readController() {
             `Throttle: ${throttle.toFixed(2)} | ` +
             `Steering: ${steering.toFixed(2)}`
         );
+    } else {
+
+        document.getElementById("controllerStatus").textContent =
+            "Controller: 🔴 Disconnected";
+
+        document.getElementById("throttleStatus").textContent =
+            "Throttle: 0.00";
+
+        document.getElementById("steeringStatus").textContent =
+            "Steering: 0.00";
     }
 
     requestAnimationFrame(readController);
