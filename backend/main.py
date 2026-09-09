@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import subprocess
+import json
 
 app = FastAPI()
 camera_process = None
@@ -197,17 +198,26 @@ async def websocket_endpoint(websocket: WebSocket):
     while True:
         message = await websocket.receive_text()
 
-        if message == "camera_on":
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError:
+            print("Invalid JSON:", message)
+            continue
+
+        if data.get("type") == "drive":
+
+            throttle = data.get("throttle", 0)
+            steering = data.get("steering", 0)
+
+            print(
+                f"Drive: throttle={throttle:.2f} "
+                f"steering={steering:.2f}"
+            )
+
+        elif data.get("type") == "camera_on":
             start_camera()
             await websocket.send_text("Camera ON")
 
-        elif message == "camera_off":
+        elif data.get("type") == "camera_off":
             stop_camera()
             await websocket.send_text("Camera OFF")
-
-        else:
-            print("Pi received:", message)
-
-            await websocket.send_text(
-                f"Pi received: {message}"
-            )
