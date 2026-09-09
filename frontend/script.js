@@ -13,3 +13,11 @@ socket.onmessage = (event) => {
 function sendCommand(command) {
     socket.send(JSON.stringify(command));
 }
+
+function sendDriveInput(throttle, steering) {
+    sendCommand({
+        type: "drive_input",
+        throttle: throttle,
+        steering: steering
+    });
+}

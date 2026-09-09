@@ -1,9 +1,17 @@
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import subprocess
 
 app = FastAPI()
 camera_process = None
+
+app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
+
+
+@app.get("/control")
+async def control_page():
+    return FileResponse("frontend/index.html")
 
 def start_camera():
     global camera_process
@@ -198,6 +206,8 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_text("Camera OFF")
 
         else:
+            print("Pi received:", message)
+
             await websocket.send_text(
                 f"Pi received: {message}"
             )
