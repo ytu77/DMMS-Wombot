@@ -36,6 +36,12 @@ function readController() {
         const throttle = applyDeadzone(-controller.axes[1]);
         const steering = applyDeadzone(controller.axes[0]);
 
+        document.getElementById("throttleStatus").textContent =
+            `Throttle: ${throttle.toFixed(2)}`;
+
+        document.getElementById("steeringStatus").textContent =
+            `Steering: ${steering.toFixed(2)}`;
+
         const now = performance.now();
 
         if (now - lastSendTime >= SEND_INTERVAL) {
@@ -56,11 +62,29 @@ function readController() {
 }
 
 window.addEventListener("gamepadconnected", (event) => {
-    console.log("Controller connected:", event.gamepad.id);
+    window.addEventListener("gamepadconnected", (event) => {
+        console.log("Controller connected:", event.gamepad.id);
+
+        document.getElementById("controllerStatus").textContent =
+            "Controller: 🟢 Connected";
+    });
 });
 
 window.addEventListener("gamepaddisconnected", (event) => {
-    console.log("Controller disconnected:", event.gamepad.id);
+    window.addEventListener("gamepaddisconnected", (event) => {
+        console.log("Controller disconnected:", event.gamepad.id);
+
+        controller = null;
+
+        document.getElementById("controllerStatus").textContent =
+            "Controller: 🔴 Disconnected";
+
+        document.getElementById("throttleStatus").textContent =
+            "Throttle: 0.00";
+
+        document.getElementById("steeringStatus").textContent =
+            "Steering: 0.00";
+    });
 });
 
 requestAnimationFrame(readController);
