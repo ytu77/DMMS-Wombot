@@ -28,7 +28,7 @@ def start_camera():
         "-video_size", "1280x720",
         "-framerate", "30",
         "-i", "/dev/video0",
-        "-vf", "format=yuv420p",
+        "-vf", "hflip,vflip,format=yuv420p",
         "-c:v", "h264_v4l2m2m",
         "-f", "rtsp",
         "rtsp://127.0.0.1:8554/camera"
