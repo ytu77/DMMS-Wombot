@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import subprocess
 import json
+from starlette.websockets import WebSocketDisconnect
 
 app = FastAPI()
 camera_process = None
@@ -195,29 +196,33 @@ async def test_page():
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
-    while True:
-        message = await websocket.receive_text()
+    try:
+        while True:
+            message = await websocket.receive_text()
 
-        try:
-            data = json.loads(message)
-        except json.JSONDecodeError:
-            print("Invalid JSON:", message)
-            continue
+            try:
+                data = json.loads(message)
+            except json.JSONDecodeError:
+                print("Invalid JSON:", message)
+                continue
 
-        if data.get("type") == "drive":
+            if data.get("type") == "drive":
 
-            throttle = data.get("throttle", 0)
-            steering = data.get("steering", 0)
+                throttle = data.get("throttle", 0)
+                steering = data.get("steering", 0)
 
-            print(
-                f"Drive: throttle={throttle:.2f} "
-                f"steering={steering:.2f}"
-            )
+                print(
+                    f"Drive: throttle={throttle:.2f} "
+                    f"steering={steering:.2f}"
+                )
 
-        elif data.get("type") == "camera_on":
-            start_camera()
-            await websocket.send_text("Camera ON")
+            elif data.get("type") == "camera_on":
+                start_camera()
+                await websocket.send_text("Camera ON")
 
-        elif data.get("type") == "camera_off":
-            stop_camera()
-            await websocket.send_text("Camera OFF")
+            elif data.get("type") == "camera_off":
+                stop_camera()
+                await websocket.send_text("Camera OFF")
+
+    except WebSocketDisconnect:
+        print("WebSocket client disconnected")
