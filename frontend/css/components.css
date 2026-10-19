@@ -1,0 +1,332 @@
+/* Shared panel styling */
+.item {
+  background: #161822;
+  color: #fff;
+  border: 1px solid #26293b;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.panel-header {
+  flex: 0 0 auto;
+  background: #1e2130;
+  padding: 12px 18px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #8f9bb3;
+  border-bottom: 1px solid #26293b;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-meta {
+  font-size: 0.72rem;
+  color: #777f96;
+  white-space: nowrap;
+}
+
+/* Camera feed and overlay */
+.video-feed {
+  background: #000;
+  position: relative;
+}
+
+.stream-canvas {
+  transition: opacity 0.25s ease;
+}
+
+.stream-canvas.feed-off {
+  opacity: 0;
+}
+
+.stream-overlay {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  right: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(15, 16, 21, 0.85);
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  letter-spacing: 0.5px;
+  z-index: 2;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+#statusText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  background: #ff3333;
+  border-radius: 50%;
+  animation: blink 1.2s infinite;
+}
+
+.live-dot.offline {
+  background: #666;
+  animation: none;
+}
+
+@keyframes blink {
+  50% { opacity: 0.3; }
+}
+
+/* Toggle */
+.switch-wrapper {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.switch-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: #8f9bb3;
+}
+
+.toggle-track {
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  background: #2e334d;
+  border-radius: 10px;
+  position: relative;
+  transition: background-color 0.2s ease;
+}
+
+.toggle-handle {
+  display: block;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.2s ease;
+}
+
+.switch-wrapper.active .toggle-track {
+  background: #00e676;
+}
+
+.switch-wrapper.active .toggle-handle {
+  transform: translateX(16px);
+}
+
+/* Telemetry */
+.status-content {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 15px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.stat-card {
+  min-width: 0;
+  background: #1e2130;
+  border: 1px solid #26293b;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.stat-wide {
+  grid-column: span 2;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: #8f9bb3;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 1.05rem;
+  font-weight: bold;
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+
+.text-online { color: #00e676; }
+.text-offline { color: #ff3333; }
+.text-warning { color: #ffea00; }
+
+/* Comms log */
+.log-container {
+  /* Change flex to not grow, not shrink, and base its size on a fixed height */
+  flex: 0 0 400px; /* Or use 'none' and set height explicitly */
+  height: 400px;   /* Define your desired fixed height */
+  overflow-y: auto; /* Adds a vertical scrollbar if the logs exceed the height */
+
+  background: #0a0b10;
+  padding: 15px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.log-line {
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.log-tx { color: #00b0ff; }
+.log-rx { color: #00e676; }
+.log-err { color: #ff3333; font-weight: bold; }
+
+/* Emergency stop panel */
+.estop-container {
+  background: #fcd116;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cca100;
+  padding: 30px;
+  gap: 20px;
+}
+
+.estop-btn {
+  width: min(150px, 60%);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  color: #fff;
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: min(1.4rem, 6vw);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  text-shadow: 0 -2px 0 rgba(0, 0, 0, 0.4);
+  background: linear-gradient(to bottom, #ff3b30, #cc0000);
+  box-shadow: 0 0 0 10px #0f1015, 0 14px 0 0 #800000, 0 20px 25px rgba(0, 0, 0, 0.55);
+  transition: all 0.08s ease;
+  position: relative;
+  top: -7px;
+}
+
+.estop-btn:hover:not(.latched) {
+  background: linear-gradient(to bottom, #ff453a, #dd0000);
+}
+
+.estop-btn.latched {
+  top: 5px;
+  background: linear-gradient(to bottom, #990000, #770000);
+  box-shadow: 0 0 0 10px #0f1015, 0 2px 0 0 #4a0000, 0 4px 10px rgba(0, 0, 0, 0.7);
+}
+
+.estop-caption {
+  color: #292000;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-align: center;
+  max-width: 240px;
+}
+
+/* Buttons used across the page */
+.primary-btn,
+.secondary-btn,
+.rebind-btn,
+.text-btn {
+  cursor: pointer;
+  border-radius: 7px;
+  font: inherit;
+  font-weight: 650;
+  transition: filter 0.15s, border-color 0.15s;
+}
+
+.primary-btn {
+  margin-top: 5px;
+  padding: 11px 14px;
+  color: #07150d;
+  background: #00e676;
+  border: none;
+}
+
+.secondary-btn,
+.rebind-btn {
+  color: #dbe2f4;
+  background: #222638;
+  border: 1px solid #363b52;
+}
+
+.secondary-btn {
+  padding: 10px 13px;
+  white-space: nowrap;
+}
+
+.rebind-btn {
+  padding: 5px 7px;
+  font-size: 0.72rem;
+}
+
+.text-btn {
+  background: transparent;
+  border: none;
+  color: #00e676;
+  font-size: 0.75rem;
+}
+
+.primary-btn:hover,
+.secondary-btn:hover,
+.rebind-btn:hover {
+  filter: brightness(1.15);
+}
+
+@media (max-width: 520px) {
+  .status-content {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .stream-overlay {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    padding: 7px 10px;
+  }
+
+  .panel-header {
+    padding: 10px 12px;
+  }
+
+  .estop-container {
+    min-height: 220px;
+  }
+}

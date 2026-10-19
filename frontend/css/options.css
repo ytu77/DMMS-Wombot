@@ -1,0 +1,228 @@
+/* Options panel */
+.options-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.options-heading h1 {
+  font-size: 1.6rem;
+  margin: 5px 0;
+  color: #fff;
+}
+
+.eyebrow {
+  color: #00e676;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+.muted {
+  color: #8f9bb3;
+  font-size: 0.9rem;
+}
+
+.small {
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  min-width: 0;
+}
+
+.option-content label {
+  color: #c6cde0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.option-content select {
+  width: 100%;
+  min-width: 0;
+  background: #0f1015;
+  color: #fff;
+  border: 1px solid #363b52;
+  border-radius: 7px;
+  padding: 11px;
+  font: inherit;
+}
+
+.option-content input[type="range"] {
+  width: 100%;
+  accent-color: #00e676;
+}
+
+.option-content input[type="color"] {
+  width: 54px;
+  height: 38px;
+  border: 1px solid #363b52;
+  background: #0f1015;
+  border-radius: 6px;
+  padding: 3px;
+  cursor: pointer;
+}
+
+.colour-row,
+.range-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.colour-row span,
+.range-row span {
+  color: #00e676;
+  font-family: monospace;
+}
+
+.led-preview {
+  min-height: 100px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid #363b52;
+  background: #0a0b10;
+  color: #00e676;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-shadow: 0 0 12px currentColor;
+  transition: background 0.2s, color 0.2s;
+}
+
+.led-preview.rgb-wave {
+  background: linear-gradient(110deg, #ff1744, #ffea00, #00e676, #00b0ff, #d500f9, #ff1744);
+  background-size: 300% 100%;
+  animation: rgbWave 3s linear infinite;
+}
+
+.led-preview.snowflakes {
+  background:
+    radial-gradient(circle at 20% 30%, #fff 0 2px, transparent 3px),
+    radial-gradient(circle at 70% 65%, #b3e5fc 0 2px, transparent 3px),
+    radial-gradient(circle at 50% 20%, #fff 0 1px, transparent 2px),
+    #102337;
+  color: #dff6ff;
+}
+
+.led-preview.circulating {
+  background: conic-gradient(from 0deg, #00e676, #00b0ff, #d500f9, #ff1744, #00e676);
+  color: #fff;
+}
+
+@keyframes rgbWave {
+  to { background-position: 300% 0; }
+}
+
+.mode-description,
+.warning-note {
+  padding: 14px;
+  border-radius: 8px;
+  background: #1e2130;
+  border: 1px solid #30354b;
+  line-height: 1.5;
+}
+
+.mode-description p {
+  color: #aab4ca;
+  margin-top: 5px;
+  font-size: 0.85rem;
+}
+
+.warning-note {
+  color: #ffdf80;
+  font-size: 0.8rem;
+}
+
+.mapping-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #30354b;
+  border-radius: 8px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.mapping-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.8fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #30354b;
+  font-size: 0.8rem;
+  min-width: 0;
+}
+
+.mapping-row:last-child {
+  border-bottom: none;
+}
+
+.mapping-header {
+  background: #1e2130;
+  color: #8f9bb3;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.mapping-row > span:not(:first-child) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+kbd {
+  color: #00e676;
+  background: #0a0b10;
+  border: 1px solid #363b52;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: 0.8rem monospace;
+}
+
+.rebind-btn.listening {
+  border-color: #00e676;
+  color: #00e676;
+}
+
+@media (max-width: 850px) {
+  .options-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 520px) {
+  .option-content {
+    padding: 14px;
+  }
+
+  .mapping-row {
+    grid-template-columns: minmax(62px, 0.7fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 4px;
+    padding: 8px 5px;
+    font-size: 0.72rem;
+  }
+
+  .rebind-btn {
+    font-size: 0.65rem;
+    padding: 4px 5px;
+  }
+
+  kbd {
+    font-size: 0.72rem;
+  }
+}

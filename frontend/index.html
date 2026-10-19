@@ -1,26 +1,361 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
-    <title>Wombot</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rover Mission Control Console</title>
+    <link rel="stylesheet" href="css/layout.css" />
+    <link rel="stylesheet" href="css/components.css" />
+    <link rel="stylesheet" href="css/options.css" />
+    <script src="js/dashboard.js" defer></script>
+    <script src="js/camera.js" defer></script>
+    <script src="js/options.js" defer></script>
+    <script src="js/mappings.js" defer></script>
+    <script src="js/main.js" defer></script>
   </head>
-
   <body>
-    <h1>WOMBOT</h1>
+    <main>
+      <div class="plus-grid">
+        <!-- QUADRANT 1: Camera feed -->
+        <section class="item video-feed">
+          <div class="stream-overlay">
+            <div class="status-indicator">
+              <div id="liveDot" class="live-dot"></div>
+              <span id="statusText">CAM LIVE</span>
+            </div>
+            <button
+              id="feedSwitch"
+              class="switch-wrapper active"
+              type="button"
+              aria-pressed="true"
+              aria-label="Toggle camera feed"
+            >
+              <span class="switch-label">Feed</span>
+              <span class="toggle-track"
+                ><span class="toggle-handle"></span
+              ></span>
+            </button>
+          </div>
+          <canvas id="placeholderStream" class="stream-canvas"></canvas>
+        </section>
 
-    <button id="cameraOn">Camera ON</button>
-    <button id="cameraOff">Camera OFF</button>
+        <!-- QUADRANT 2: Telemetry -->
+        <section class="item">
+          <div class="panel-header">System Status</div>
+          <div class="status-content">
+            <div class="stat-card">
+              <div class="stat-label">Rover Comms</div>
+              <div id="statRoverComms" class="stat-value text-online">
+                CONNECTED (SIMULATED)
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Laptop Controller</div>
+              <div id="statController" class="stat-value text-online">
+                CONNECTED
+              </div>
+            </div>
+            <div class="stat-card stat-wide">
+              <div class="stat-label">Rover State Machine</div>
+              <div id="statRoverState" class="stat-value text-online">
+                NOMINAL / DRIVING
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Wheel Speeds (L / R)</div>
+              <div id="statWheelSpeeds" class="stat-value">1.24 / 1.22 m/s</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Odo Distance</div>
+              <div id="statDistance" class="stat-value">42.85 m</div>
+            </div>
+          </div>
+        </section>
 
-    <div id="cameraContainer"></div>
+        <!-- QUADRANT 3: Communications log -->
+        <section class="item">
+          <div class="panel-header">
+            <span>Comms Terminal Log</span>
+            <!-- <span class="panel-meta">SIMULATED · 115200</span> -->
+            <!-- <button class="text-btn" id="clearLog" type="button">
+              Clear log
+            </button> -->
+            <button
+              class="text-btn"
+              id="clearLog"
+              type="button"
+              onclick="RoverUI.clearLog()"
+            >
+              Clear log
+            </button>
+          </div>
+          <div id="logTerminal" class="log-container" aria-live="polite"></div>
+        </section>
 
-    <p id="connectionStatus">Connecting...</p>
+        <!-- QUADRANT 4: E-stop -->
+        <section class="item estop-container">
+          <button
+            id="estop"
+            class="estop-btn"
+            type="button"
+            aria-pressed="false"
+          >
+            E-Stop
+          </button>
+          <p class="estop-caption">
+            THIS BUTTON ONLY STOPS SOFTWARE CONTROLS, NOT HARDWARE SAFETY
+          </p>
+        </section>
+      </div>
 
-    <div id="controllerInfo">
-      <p id="controllerStatus">Controller: 🟡 Waiting...</p>
-      <p id="throttleStatus">Throttle: 0.00</p>
-      <p id="steeringStatus">Steering: 0.00</p>
-    </div>
+      <!-- Options panel below dashboard -->
+      <section class="options-section" id="options">
+        <div class="options-heading">
+          <div>
+            <p class="eyebrow">SYSTEM CONFIGURATION</p>
+            <h1>Rover Options</h1>
+            <p class="muted">
+              Configure lighting, control behaviour and input mappings.
+            </p>
+          </div>
+          <button class="secondary-btn" id="backToDashboard" type="button">
+            ↑ Back to dashboard
+          </button>
+        </div>
 
-    <script src="/frontend/script.js"></script>
-    <script src="/frontend/controller.js"></script>
+        <div class="options-grid">
+          <!-- LED configuration -->
+          <section class="item option-card">
+            <div class="panel-header">LED Configuration</div>
+            <div class="option-content">
+              <label for="ledMode">Lighting mode</label>
+              <select id="ledMode">
+                <option value="state">State-driven colours (default)</option>
+                <option value="rgb-wave">RGB wave</option>
+                <option value="snowflakes">Snowflakes</option>
+                <option value="circulating">Circulating lights</option>
+                <option value="custom">Custom solid colour</option>
+              </select>
+
+              <div class="led-preview" id="ledPreview">
+                <span id="ledPreviewText">NOMINAL</span>
+              </div>
+
+              <div id="customColourControls" hidden>
+                <label for="ledColour">Custom RGB colour</label>
+                <div class="colour-row">
+                  <input id="ledColour" type="color" value="#00e676" />
+                  <span id="ledColourHex">#00E676</span>
+                </div>
+              </div>
+
+              <div class="range-row">
+                <label for="ledBrightness">Brightness</label>
+                <span id="brightnessValue">75%</span>
+              </div>
+              <input
+                id="ledBrightness"
+                type="range"
+                min="0"
+                max="100"
+                value="75"
+              />
+
+              <div class="range-row">
+                <label for="ledSpeed">Animation speed</label>
+                <span id="speedValue">50%</span>
+              </div>
+              <input id="ledSpeed" type="range" min="0" max="100" value="50" />
+
+              <button class="primary-btn" id="applyLedSettings" type="button">
+                Apply lighting settings
+              </button>
+              <p class="muted small" id="ledFeedback" role="status">
+                Preview only; no rover command has been sent.
+              </p>
+            </div>
+          </section>
+
+          <!-- Control mode -->
+          <section class="item option-card">
+            <div class="panel-header">Rover Control Mode</div>
+            <div class="option-content">
+              <label for="controlMode">Operating mode</label>
+              <select id="controlMode">
+                <option value="interactive">Interactive</option>
+                <option value="manual">Manual</option>
+                <option value="automatic">Automatic</option>
+              </select>
+
+              <div class="mode-description" id="modeDescription">
+                <strong>Interactive control</strong>
+                <p>Rover will not move and is safe to interact with.</p>
+              </div>
+
+              <div class="warning-note">
+                <strong>Not connected:</strong> selecting a mode here does not
+                change the rover's actual operating mode.
+              </div>
+
+              <button class="primary-btn" id="applyMode" type="button">
+                Apply control mode
+              </button>
+              <p class="muted small" id="modeFeedback" role="status">
+                No mode command has been sent.
+              </p>
+            </div>
+          </section>
+
+          <!-- Input mappings -->
+          <section class="item option-card mappings-card">
+            <div class="panel-header">
+              <span>Input Mappings</span>
+              <button class="text-btn" id="resetMappings" type="button">
+                Reset defaults
+              </button>
+            </div>
+            <div class="option-content">
+              <p class="muted">
+                Select Rebind, then press a keyboard key or controller button.
+              </p>
+              <div class="mapping-table">
+                <div class="mapping-row mapping-header">
+                  <span>Action</span><span>Keyboard</span
+                  ><span>Controller</span>
+                </div>
+                <div class="mapping-row">
+                  <span>Forward</span>
+                  <span
+                    ><kbd id="key-forward">W</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="forward"
+                      data-input="keyboard"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                  <span
+                    ><kbd id="pad-forward">Button 12</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="forward"
+                      data-input="controller"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                </div>
+                <div class="mapping-row">
+                  <span>Reverse</span>
+                  <span
+                    ><kbd id="key-reverse">S</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="reverse"
+                      data-input="keyboard"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                  <span
+                    ><kbd id="pad-reverse">Button 13</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="reverse"
+                      data-input="controller"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                </div>
+                <div class="mapping-row">
+                  <span>Turn left</span>
+                  <span
+                    ><kbd id="key-left">A</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="left"
+                      data-input="keyboard"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                  <span
+                    ><kbd id="pad-left">Button 14</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="left"
+                      data-input="controller"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                </div>
+                <div class="mapping-row">
+                  <span>Turn right</span>
+                  <span
+                    ><kbd id="key-right">D</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="right"
+                      data-input="keyboard"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                  <span
+                    ><kbd id="pad-right">Button 15</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="right"
+                      data-input="controller"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                </div>
+                <div class="mapping-row">
+                  <span>Stop</span>
+                  <span
+                    ><kbd id="key-stop">Space</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="stop"
+                      data-input="keyboard"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                  <span
+                    ><kbd id="pad-stop">Button 0</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="stop"
+                      data-input="controller"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                </div>
+              </div>
+              <p class="muted small" id="mappingFeedback" role="status">
+                Default mappings loaded. Controller mappings use button indices.
+              </p>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
   </body>
 </html>
