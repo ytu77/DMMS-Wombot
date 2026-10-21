@@ -79,6 +79,16 @@ function readController() {
 
         document.getElementById("steeringStatus").textContent =
             "Steering: 0.00";
+
+        const now = performance.now();
+
+        if (now - lastSendTime >= SEND_INTERVAL) {
+            if (typeof sendDriveInput === "function") {
+                sendDriveInput(0, 0);
+            }
+
+            lastSendTime = now;
+        }
     }
 
     requestAnimationFrame(readController);

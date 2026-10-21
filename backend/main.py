@@ -5,11 +5,88 @@ import subprocess
 import json
 from starlette.websockets import WebSocketDisconnect
 
+import os
+import threading
+import time
+import serial
+
+import asyncio
+
 app = FastAPI()
 camera_process = None
 
 app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
 
+ESP32_PORT = os.getenv("ESP32_SERIAL_PORT", "/dev/ttyUSB0")
+ESP32_BAUD = 115200
+
+esp_serial = None
+serial_lock = threading.Lock()
+
+
+def send_to_esp32(command: dict) -> bool:
+    """Send one newline-terminated JSON command to the ESP32."""
+    if esp_serial is None or not esp_serial.is_open:
+        print("ESP32 serial unavailable; command not sent")
+        return False
+
+    payload = json.dumps(command, separators=(",", ":")) + "\n"
+
+    try:
+        with serial_lock:
+            esp_serial.write(payload.encode("utf-8"))
+            esp_serial.flush()
+        return True
+    except (serial.SerialException, OSError) as exc:
+        print(f"ESP32 serial write failed: {exc}")
+        return False
+
+
+def serial_reader():
+    """Print newline-terminated status messages from the ESP32."""
+    while True:
+        if esp_serial is None or not esp_serial.is_open:
+            time.sleep(0.5)
+            continue
+
+        try:
+            line = esp_serial.readline().decode(
+                "utf-8", errors="replace"
+            ).strip()
+
+            if line:
+                print(f"ESP32: {line}")
+
+        except (serial.SerialException, OSError) as exc:
+            print(f"ESP32 serial read failed: {exc}")
+            time.sleep(1)
+
+
+@app.on_event("startup")
+async def connect_esp32():
+    global esp_serial
+
+    try:
+        esp_serial = serial.Serial(
+            ESP32_PORT,
+            ESP32_BAUD,
+            timeout=0.1,
+        )
+
+        # Opening USB serial may reset the ESP32.
+        await asyncio.sleep(2)
+
+        threading.Thread(
+            target=serial_reader,
+            daemon=True,
+        ).start()
+
+        print(f"ESP32 serial connected: {ESP32_PORT}")
+
+    except (serial.SerialException, OSError) as exc:
+        esp_serial = None
+        print(f"ESP32 serial unavailable: {exc}")
+        print("Web interface will start without motor control.")
 
 @app.get("/control")
 async def control_page():
@@ -192,9 +269,11 @@ async def test_page():
     """)
 
 
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    print("WebSocket client connected")
 
     try:
         while True:
@@ -203,26 +282,68 @@ async def websocket_endpoint(websocket: WebSocket):
             try:
                 data = json.loads(message)
             except json.JSONDecodeError:
-                print("Invalid JSON:", message)
+                print("Invalid WebSocket JSON:", message)
                 continue
 
-            if data.get("type") == "drive":
+            command_type = data.get("type")
 
-                throttle = data.get("throttle", 0)
-                steering = data.get("steering", 0)
+            if command_type == "drive":
+                try:
+                    throttle = float(data.get("throttle", 0))
+                    steering = float(data.get("steering", 0))
+                except (TypeError, ValueError):
+                    send_to_esp32({"type": "stop"})
+                    continue
 
-                print(
-                    f"Drive: throttle={throttle:.2f} "
-                    f"steering={steering:.2f}"
-                )
+                import math
 
-            elif data.get("type") == "camera_on":
+                if not math.isfinite(throttle) or not math.isfinite(steering):
+                    send_to_esp32({"type": "stop"})
+                    continue
+
+                # Clamp browser inputs to their expected range.
+                throttle = max(-1.0, min(1.0, throttle))
+                steering = max(-1.0, min(1.0, steering))
+
+                # Differential steering:
+                # positive steering turns towards the right.
+                left = throttle + steering
+                right = throttle - steering
+
+                # Preserve the ratio while keeping all outputs in range.
+                scale = max(1.0, abs(left), abs(right))
+                left /= scale
+                right /= scale
+
+                wheel_command = {
+                    "type": "drive",
+                    "fl": left,
+                    "fr": right,
+                    "rl": left,
+                    "rr": right,
+                }
+
+                if not send_to_esp32(wheel_command):
+                    print("Drive command dropped: ESP32 unavailable")
+
+            elif command_type in ("stop", "estop"):
+                # The current ESP32 implementation stops on either command.
+                send_to_esp32({"type": command_type})
+
+            elif command_type == "camera_on":
                 start_camera()
                 await websocket.send_text("Camera ON")
 
-            elif data.get("type") == "camera_off":
+            elif command_type == "camera_off":
                 stop_camera()
                 await websocket.send_text("Camera OFF")
 
+            else:
+                print("Unknown WebSocket command:", command_type)
+
     except WebSocketDisconnect:
         print("WebSocket client disconnected")
+
+    finally:
+        # Stop the rover if the operator's browser disconnects.
+        send_to_esp32({"type": "stop"})
