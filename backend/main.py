@@ -1,349 +1,273 @@
-from fastapi import FastAPI, WebSocket
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-import subprocess
-import json
-from starlette.websockets import WebSocketDisconnect
-
-import os
-import threading
-import time
+from __future__ import annotations
+import asyncio, itertools, json, math, os, subprocess, threading, time
+from contextlib import suppress
+from pathlib import Path
+from typing import Any
 import serial
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
-import asyncio
-
-app = FastAPI()
-camera_process = None
-
-app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
-
+BASE_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = BASE_DIR / "frontend"
 ESP32_PORT = os.getenv("ESP32_SERIAL_PORT", "/dev/ttyUSB0")
-ESP32_BAUD = 115200
+ESP32_BAUD = int(os.getenv("ESP32_BAUD", "115200"))
+PROTOCOL_VERSION = 1
+app = FastAPI(title="Wombot Mission Control")
+app.mount("/frontend", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend")
 
-esp_serial = None
+camera_process: subprocess.Popen | None = None
+esp_serial: serial.Serial | None = None
 serial_lock = threading.Lock()
+clients: set[WebSocket] = set()
+clients_lock = asyncio.Lock()
+command_ids = itertools.count(1)
+event_loop: asyncio.AbstractEventLoop | None = None
+shutdown_event = threading.Event()
 
+async def broadcast(message: dict[str, Any]) -> None:
+    async with clients_lock:
+        current = list(clients)
+    stale = []
+    encoded = json.dumps(message, separators=(",", ":"))
+    for client in current:
+        try:
+            await client.send_text(encoded)
+        except Exception:
+            stale.append(client)
+    if stale:
+        async with clients_lock:
+            for client in stale:
+                clients.discard(client)
 
-def send_to_esp32(command: dict) -> bool:
-    """Send one newline-terminated JSON command to the ESP32."""
-    if esp_serial is None or not esp_serial.is_open:
-        print("ESP32 serial unavailable; command not sent")
+def broadcast_from_thread(message: dict[str, Any]) -> None:
+    loop = event_loop
+    if loop is None or loop.is_closed():
+        return
+    future = asyncio.run_coroutine_threadsafe(broadcast(message), loop)
+    future.add_done_callback(lambda f: f.exception() if not f.cancelled() else None)
+
+def send_to_esp32(command: dict[str, Any]) -> bool:
+    device = esp_serial
+    if device is None or not device.is_open:
         return False
-
-    payload = json.dumps(command, separators=(",", ":")) + "\n"
-
     try:
+        payload = json.dumps(command, separators=(",", ":"), allow_nan=False) + "\n"
         with serial_lock:
-            esp_serial.write(payload.encode("utf-8"))
-            esp_serial.flush()
+            device.write(payload.encode("utf-8"))
+            device.flush()
         return True
     except (serial.SerialException, OSError) as exc:
         print(f"ESP32 serial write failed: {exc}")
+        broadcast_from_thread({"type": "connection", "component": "esp32", "connected": False, "message": str(exc)})
         return False
 
+def esp_command(cmd: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {"v": PROTOCOL_VERSION, "type": "command", "id": next(command_ids), "cmd": cmd, "args": args or {}}
 
-def serial_reader():
-    """Print newline-terminated status messages from the ESP32."""
-    while True:
-        if esp_serial is None or not esp_serial.is_open:
-            time.sleep(0.5)
+def serial_reader() -> None:
+    while not shutdown_event.is_set():
+        device = esp_serial
+        if device is None or not device.is_open:
+            time.sleep(.25)
             continue
-
         try:
-            line = esp_serial.readline().decode(
-                "utf-8", errors="replace"
-            ).strip()
-
-            if line:
-                print(f"ESP32: {line}")
-
+            raw = device.readline()
+            if not raw:
+                continue
+            line = raw.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            try:
+                message = json.loads(line)
+            except json.JSONDecodeError:
+                print(f"ESP32 non-JSON output: {line}")
+                broadcast_from_thread({"type": "log", "level": "warning", "source": "esp32", "message": line})
+                continue
+            print(f"ESP32: {line}")
+            broadcast_from_thread(message)
         except (serial.SerialException, OSError) as exc:
             print(f"ESP32 serial read failed: {exc}")
+            broadcast_from_thread({"type": "connection", "component": "esp32", "connected": False, "message": str(exc)})
             time.sleep(1)
 
+def start_camera() -> tuple[bool, str]:
+    global camera_process
+    if camera_process is not None and camera_process.poll() is None:
+        return True, "Camera is already running"
+    camera_process = None
+    command = ["ffmpeg", "-f", "v4l2", "-input_format", "mjpeg", "-video_size", "1280x720", "-framerate", "30", "-i", "/dev/video0", "-vf", "hflip,vflip,format=yuv420p", "-c:v", "h264_v4l2m2m", "-f", "rtsp", "rtsp://127.0.0.1:8554/camera"]
+    try:
+        camera_process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
+        time.sleep(.15)
+        if camera_process.poll() is not None:
+            camera_process = None
+            return False, "FFmpeg exited during startup; check the Pi terminal for camera/codec errors"
+        return True, "Camera publisher started"
+    except (OSError, subprocess.SubprocessError) as exc:
+        camera_process = None
+        return False, str(exc)
+
+def stop_camera() -> tuple[bool, str]:
+    global camera_process
+    if camera_process is None:
+        return True, "Camera is already stopped"
+    process, camera_process = camera_process, None
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+    return True, "Camera publisher stopped"
 
 @app.on_event("startup")
-async def connect_esp32():
-    global esp_serial
-
+async def startup() -> None:
+    global event_loop, esp_serial
+    event_loop = asyncio.get_running_loop()
+    shutdown_event.clear()
     try:
-        esp_serial = serial.Serial(
-            ESP32_PORT,
-            ESP32_BAUD,
-            timeout=0.1,
-        )
-
-        # Opening USB serial may reset the ESP32.
-        await asyncio.sleep(2)
-
-        threading.Thread(
-            target=serial_reader,
-            daemon=True,
-        ).start()
-
-        print(f"ESP32 serial connected: {ESP32_PORT}")
-
+        esp_serial = serial.Serial(ESP32_PORT, ESP32_BAUD, timeout=.1, write_timeout=.5)
+        await asyncio.sleep(2)  # USB serial opening may reset the ESP32
+        threading.Thread(target=serial_reader, name="esp32-serial-reader", daemon=True).start()
+        print(f"ESP32 serial opened: {ESP32_PORT} at {ESP32_BAUD} baud")
     except (serial.SerialException, OSError) as exc:
         esp_serial = None
-        print(f"ESP32 serial unavailable: {exc}")
-        print("Web interface will start without motor control.")
+        print(f"ESP32 serial unavailable: {exc}; web UI will still start")
 
-@app.get("/control")
-async def control_page():
-    return FileResponse("frontend/index.html")
-
-def start_camera():
-    global camera_process
-
-    if camera_process is not None:
-        return
-
-    camera_process = subprocess.Popen([
-        "ffmpeg",
-        "-f", "v4l2",
-        "-input_format", "mjpeg",
-        "-video_size", "1280x720",
-        "-framerate", "30",
-        "-i", "/dev/video0",
-        "-vf", "hflip,vflip,format=yuv420p",
-        "-c:v", "h264_v4l2m2m",
-        "-f", "rtsp",
-        "rtsp://127.0.0.1:8554/camera"
-    ])
-
-
-def stop_camera():
-    global camera_process
-
-    if camera_process is not None:
-        camera_process.terminate()
-        camera_process.wait()
-        camera_process = None
-
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    global esp_serial
+    shutdown_event.set()
+    send_to_esp32(esp_command("stop"))
+    stop_camera()
+    if esp_serial is not None:
+        with suppress(Exception):
+            esp_serial.close()
+        esp_serial = None
 
 @app.get("/")
 async def root():
-    return {"status": "Wombot server is alive!"}
+    return {"status": "Wombot server is alive", "protocol_version": PROTOCOL_VERSION}
 
+@app.get("/control")
+async def control_page():
+    return FileResponse(FRONTEND_DIR / "index.html")
+
+@app.get("/health")
+async def health():
+    device = esp_serial
+    return {"server": "ok", "esp32_serial": bool(device is not None and device.is_open), "camera_process": bool(camera_process is not None and camera_process.poll() is None), "protocol_version": PROTOCOL_VERSION}
 
 @app.get("/test")
 async def test_page():
-    return HTMLResponse("""
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Wombot Control</title>
+    return HTMLResponse("""<!doctype html><html><meta charset='utf-8'><title>Wombot diagnostics</title><body><h1>Wombot diagnostics</h1><pre id='out'>Connecting…</pre><script>const o=document.getElementById('out');const w=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);w.onopen=()=>o.textContent='WebSocket connected';w.onmessage=e=>o.textContent+='\\n'+e.data;w.onclose=()=>o.textContent+='\\nDisconnected';</script></body></html>""")
 
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #222;
-            color: white;
-            margin: 20px;
-        }
+def finite_number(value: Any) -> float | None:
+    if isinstance(value, bool): return None
+    try: result = float(value)
+    except (TypeError, ValueError): return None
+    return result if math.isfinite(result) else None
 
-        .container {
-            display: flex;
-            gap: 20px;
-            align-items: flex-start;
-        }
+async def ui_error(ws: WebSocket, message: str, code: str = "INVALID_ARGUMENT") -> None:
+    await ws.send_text(json.dumps({"type": "ui_error", "code": code, "message": message}))
 
-        .camera {
-            width: 70%;
-        }
-
-        .camera iframe {
-            width: 100%;
-            aspect-ratio: 16 / 9;
-            border: none;
-        }
-
-        .controls {
-            width: 30%;
-        }
-
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-        }
-
-        #status {
-            font-weight: bold;
-        }
-    </style>
-</head>
-
-<body>
-
-    <h1>Wombot Control</h1>
-
-    <div class="container">
-
-        <div class="camera">
-            <h2>Camera</h2>
-
-            <iframe
-                id="cameraFeed"
-                src="http://10.42.0.1:8889/camera"
-                style="display: none;">
-            </iframe>
-        </div>
-
-        <div class="controls">
-
-            <h2>Connection</h2>
-
-            <p id="status">Connecting...</p>
-
-            <h2>Camera</h2>
-
-            <p id="cameraStatus">🔴 Camera OFF</p>
-
-            <button onclick="cameraOn()">Camera ON</button>
-            <button onclick="cameraOff()">Camera OFF</button>
-
-            <h3>Received:</h3>
-            <pre id="output"></pre>
-
-        </div>
-
-    </div>
-
-    <script>
-
-        const ws = new WebSocket(
-            "ws://" + location.host + "/ws"
-        );
-
-        ws.onopen = () => {
-            document.getElementById("status").textContent =
-                "Connected to Pi!";
-        };
-
-        ws.onmessage = (event) => {
-
-            document.getElementById("output").textContent +=
-                event.data + "\\n";
-
-            if (event.data === "Camera ON") {
-                document.getElementById("cameraStatus").textContent =
-                    "🟢 Camera ON";
-
-                document.getElementById("cameraFeed").style.display =
-                    "block";
-            }
-
-            if (event.data === "Camera OFF") {
-                document.getElementById("cameraStatus").textContent =
-                    "🔴 Camera OFF";
-
-                document.getElementById("cameraFeed").style.display =
-                    "none";
-            }
-        };
-
-        ws.onclose = () => {
-            document.getElementById("status").textContent =
-                "Disconnected";
-        };
-
-        function sendMessage() {
-            const message =
-                document.getElementById("message").value;
-
-            ws.send(message);
-        }
-
-	function cameraOn() {
-	    ws.send("camera_on");
-	}
-
-	function cameraOff() {
-	    ws.send("camera_off");
-	}
-
-    </script>
-
-</body>
-</html>
-    """)
-
-
+async def handle_browser_message(ws: WebSocket, data: dict[str, Any]) -> None:
+    kind = data.get("type")
+    if kind == "drive":
+        throttle, steering = finite_number(data.get("throttle")), finite_number(data.get("steering"))
+        if throttle is None or steering is None:
+            send_to_esp32(esp_command("stop"))
+            await ui_error(ws, "Throttle and steering must be finite numbers.")
+            return
+        throttle, steering = max(-1., min(1., throttle)), max(-1., min(1., steering))
+        left, right = throttle + steering, throttle - steering
+        scale = max(1., abs(left), abs(right))
+        command = esp_command("drive", {"fl": left/scale, "fr": right/scale, "rl": left/scale, "rr": right/scale})
+        if not send_to_esp32(command): await ui_error(ws, "ESP32 serial is unavailable.", "ESP32_UNAVAILABLE")
+        return
+    if kind in {"stop", "estop", "clear_estop"}:
+        args = {"reason": str(data.get("reason", "operator"))} if kind == "estop" else {}
+        if not send_to_esp32(esp_command(kind, args)): await ui_error(ws, "ESP32 serial is unavailable.", "ESP32_UNAVAILABLE")
+        return
+    if kind == "servos":
+        pan, tilt = finite_number(data.get("pan_deg")), finite_number(data.get("tilt_deg"))
+        if pan is None or tilt is None:
+            await ui_error(ws, "Servo command requires numeric pan_deg and tilt_deg.")
+            return
+        args = {"pan_deg": max(0., min(180., pan)), "tilt_deg": max(0., min(180., tilt))}
+        if not send_to_esp32(esp_command("servos", args)): await ui_error(ws, "ESP32 serial is unavailable.", "ESP32_UNAVAILABLE")
+        return
+    if kind == "led":
+        mode = data.get("mode")
+        allowed = {"off", "solid", "rainbow", "rgb-wave", "snowflakes", "circulating", "state", "custom"}
+        if mode not in allowed:
+            await ui_error(ws, "Unsupported LED mode.")
+            return
+        try:
+            brightness = max(0, min(100, int(data.get("brightness", 75))))
+            speed = max(0, min(100, int(data.get("speed", 50))))
+        except (TypeError, ValueError):
+            await ui_error(ws, "LED brightness and speed must be numbers.")
+            return
+        args: dict[str, Any] = {"mode": mode, "brightness": brightness, "speed": speed}
+        colour = data.get("colour")
+        if isinstance(colour, str) and len(colour) == 7 and colour.startswith("#"):
+            try: args["colour"] = {"r": int(colour[1:3], 16), "g": int(colour[3:5], 16), "b": int(colour[5:7], 16)}
+            except ValueError:
+                await ui_error(ws, "Invalid hex LED colour.")
+                return
+        elif isinstance(colour, dict):
+            rgb = {}
+            for channel in ("r", "g", "b"):
+                value = finite_number(colour.get(channel))
+                if value is None:
+                    await ui_error(ws, "RGB colour requires numeric r, g and b.")
+                    return
+                rgb[channel] = max(0, min(255, int(value)))
+            args["colour"] = rgb
+        if mode in {"solid", "custom"} and "colour" not in args:
+            await ui_error(ws, "Solid/custom LED mode requires a colour.")
+            return
+        if not send_to_esp32(esp_command("led", args)): await ui_error(ws, "ESP32 serial is unavailable.", "ESP32_UNAVAILABLE")
+        return
+    if kind == "camera_on":
+        ok, detail = start_camera()
+        await broadcast({"type": "camera", "state": "on" if ok else "error", "message": detail})
+        if not ok: await ui_error(ws, f"Could not start camera: {detail}", "CAMERA_START_FAILED")
+        return
+    if kind == "camera_off":
+        _, detail = stop_camera()
+        await broadcast({"type": "camera", "state": "off", "message": detail})
+        return
+    if kind == "control_mode":
+        await ui_error(ws, "Operating mode is UI-only; protocol v1 does not implement it.", "NOT_IMPLEMENTED")
+        return
+    if kind == "ping":
+        await ws.send_text(json.dumps({"type": "pong", "ts_ms": int(time.monotonic() * 1000)}))
+        return
+    await ui_error(ws, f"Unknown browser command: {kind!r}", "INVALID_COMMAND")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print("WebSocket client connected")
-
+    async with clients_lock: clients.add(websocket)
+    await websocket.send_text(json.dumps({"type": "connection", "component": "pi", "connected": True}))
     try:
         while True:
-            message = await websocket.receive_text()
-
-            try:
-                data = json.loads(message)
+            raw = await websocket.receive_text()
+            try: data = json.loads(raw)
             except json.JSONDecodeError:
-                print("Invalid WebSocket JSON:", message)
+                await ui_error(websocket, "Invalid JSON from browser.", "INVALID_JSON")
                 continue
-
-            command_type = data.get("type")
-
-            if command_type == "drive":
-                try:
-                    throttle = float(data.get("throttle", 0))
-                    steering = float(data.get("steering", 0))
-                except (TypeError, ValueError):
-                    send_to_esp32({"type": "stop"})
-                    continue
-
-                import math
-
-                if not math.isfinite(throttle) or not math.isfinite(steering):
-                    send_to_esp32({"type": "stop"})
-                    continue
-
-                # Clamp browser inputs to their expected range.
-                throttle = max(-1.0, min(1.0, throttle))
-                steering = max(-1.0, min(1.0, steering))
-
-                # Differential steering:
-                # positive steering turns towards the right.
-                left = throttle + steering
-                right = throttle - steering
-
-                # Preserve the ratio while keeping all outputs in range.
-                scale = max(1.0, abs(left), abs(right))
-                left /= scale
-                right /= scale
-
-                wheel_command = {
-                    "type": "drive",
-                    "fl": left,
-                    "fr": right,
-                    "rl": left,
-                    "rr": right,
-                }
-
-                if not send_to_esp32(wheel_command):
-                    print("Drive command dropped: ESP32 unavailable")
-
-            elif command_type in ("stop", "estop"):
-                # The current ESP32 implementation stops on either command.
-                send_to_esp32({"type": command_type})
-
-            elif command_type == "camera_on":
-                start_camera()
-                await websocket.send_text("Camera ON")
-
-            elif command_type == "camera_off":
-                stop_camera()
-                await websocket.send_text("Camera OFF")
-
-            else:
-                print("Unknown WebSocket command:", command_type)
-
+            if not isinstance(data, dict):
+                await ui_error(websocket, "Browser message must be a JSON object.")
+                continue
+            await handle_browser_message(websocket, data)
     except WebSocketDisconnect:
         print("WebSocket client disconnected")
-
     finally:
-        # Stop the rover if the operator's browser disconnects.
-        send_to_esp32({"type": "stop"})
+        async with clients_lock: clients.discard(websocket)
+        # Single-operator assumption: browser disconnect causes a safe stop.
+        send_to_esp32(esp_command("stop"))
