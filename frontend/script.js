@@ -73,7 +73,7 @@
       display: "block" 
     });
 
-    canvas.hidden = true; 
+    canvas.style.display = "none"; 
     canvas.insertAdjacentElement("afterend", cameraFrame);
   } else if (!on) {
     if (cameraFrame) cameraFrame.remove();
