@@ -4,16 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rover Mission Control Console</title>
-    <link rel="stylesheet" href="frontend/css/layout.css" />
-    <link rel="stylesheet" href="frontend/css/components.css" />
-    <link rel="stylesheet" href="frontend/css/options.css" />
-    <script src="frontend/js/dashboard.js" defer></script>
-    <script src="frontend/js/camera.js" defer></script>
-    <script src="frontend/js/options.js" defer></script>
-    <script src="frontend/js/mappings.js" defer></script>
-    <script src="frontend/js/main.js" defer></script>
-    <script src="frontend/script.js" defer></script>
-    <script src="frontend/controller.js" defer></script>
+    <link rel="stylesheet" href="../frontend/css/layout.css" />
+    <link rel="stylesheet" href="../frontend/css/components.css" />
+    <link rel="stylesheet" href="../frontend/css/options.css" />
+    <!-- <script src="../frontend/js/dashboard.js" defer></script>
+    <script src="../frontend/js/camera.js" defer></script>
+    <script src="../frontend/js/options.js" defer></script>
+    <script src="../frontend/js/mappings.js" defer></script>
+    <script src="../frontend/js/main.js" defer></script> -->
+    <script src="../frontend/script.js" defer></script>
+    <script src="../frontend/controller.js" defer></script>
   </head>
   <body>
     <main>
@@ -23,13 +23,13 @@
           <div class="stream-overlay">
             <div class="status-indicator">
               <div id="liveDot" class="live-dot"></div>
-              <span id="statusText">CAM LIVE</span>
+              <span id="statusText">CAM OFF</span>
             </div>
             <button
               id="feedSwitch"
-              class="switch-wrapper active"
+              class="switch-wrapper"
               type="button"
-              aria-pressed="true"
+              aria-pressed="false"
               aria-label="Toggle camera feed"
             >
               <span class="switch-label">Feed</span>
@@ -105,7 +105,8 @@
             E-Stop
           </button>
           <p class="estop-caption">
-            THIS BUTTON ONLY STOPS SOFTWARE CONTROLS, NOT HARDWARE SAFETY
+            THIS BUTTON IS ONLY A SOFTWARE MEASURE. IT DOES NOT PHYSICALLY CUT
+            POWER TO THE ROVER. USE WITH CAUTION.
           </p>
         </section>
       </div>
@@ -120,9 +121,9 @@
               Configure lighting, control behaviour and input mappings.
             </p>
           </div>
-          <button class="secondary-btn" id="backToDashboard" type="button">
+          <!-- <button class="secondary-btn" id="backToDashboard" type="button">
             ↑ Back to dashboard
-          </button>
+          </button> -->
         </div>
 
         <div class="options-grid">
@@ -219,6 +220,7 @@
             <div class="option-content">
               <p class="muted">
                 Select Rebind, then press a keyboard key or controller button.
+                The left controller stick drives and the right stick pans.
               </p>
               <div class="mapping-table">
                 <div class="mapping-row mapping-header">
@@ -343,6 +345,106 @@
                     ><button
                       class="rebind-btn"
                       data-action="stop"
+                      data-input="controller"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                </div>
+                <div class="mapping-row">
+                  <span>Pan Up</span>
+                  <span
+                    ><kbd id="key-pan_up">I</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="pan_up"
+                      data-input="keyboard"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                  <span
+                    ><kbd id="pad-pan_up">Button 0</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="pan_up"
+                      data-input="controller"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                </div>
+                <div class="mapping-row">
+                  <span>Pan Down</span>
+                  <span
+                    ><kbd id="key-pan_down">K</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="pan_down"
+                      data-input="keyboard"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                  <span
+                    ><kbd id="pad-pan_down">Button 0</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="pan_down"
+                      data-input="controller"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                </div>
+                <div class="mapping-row">
+                  <span>Pan Left</span>
+                  <span
+                    ><kbd id="key-pan_left">J</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="pan_left"
+                      data-input="keyboard"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                  <span
+                    ><kbd id="pad-pan_left">Button 0</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="pan_left"
+                      data-input="controller"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                </div>
+                <div class="mapping-row">
+                  <span>Pan Right</span>
+                  <span
+                    ><kbd id="key-pan_right">L</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="pan_right"
+                      data-input="keyboard"
+                      type="button"
+                    >
+                      Rebind
+                    </button></span
+                  >
+                  <span
+                    ><kbd id="pad-pan_right">Button 0</kbd
+                    ><button
+                      class="rebind-btn"
+                      data-action="pan_right"
                       data-input="controller"
                       type="button"
                     >

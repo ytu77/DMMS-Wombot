@@ -31,30 +31,73 @@
   function updateEstop() {
     const button = $("estop");
     if (button) {
-      button.setAttribute("aria-pressed", String(estopLatched));
+      // button.setAttribute("aria-pressed", String(estopLatched));
       button.classList.toggle("latched", estopLatched);
-      button.textContent = estopLatched ? "E-Stop Latched · Reset" : "E-Stop";
+      // button.textContent = estopLatched ? "E-Stop Latched · Reset" : "E-Stop";
     }
-    if (estopLatched) setText("statRoverState", "E-STOP LATCHED");
+    // if (estopLatched) setText("statRoverState", "E-STOP LATCHED");
   }
+  // function setCamera(on) {
+  //   const canvas = $("placeholderStream");
+  //   if (!canvas) return;
+  //   if (on && !cameraFrame) {
+  //     cameraFrame = document.createElement("iframe");
+  //     cameraFrame.src = `http://${location.hostname}:8889/camera`;
+  //     cameraFrame.title = "Wombot camera stream";
+  //     cameraFrame.allow = "autoplay; fullscreen";
+  //     Object.assign(cameraFrame.style, { width: "100%", height: "100%", minHeight: "240px", border: "0", background: "#000", display: "block" });
+  //     canvas.hidden = true; canvas.insertAdjacentElement("afterend", cameraFrame);
+  //   } else if (!on) {
+  //     if (cameraFrame) cameraFrame.remove();
+  //     cameraFrame = null; canvas.hidden = false;
+  //   }
+  //   setText("statusText", on ? "CAM REQUESTED" : "CAM OFF");
+  //   const dot = $("liveDot"); if (dot) dot.classList.toggle("live", on);
+  //   const button = $("feedSwitch"); if (button) { button.classList.toggle("active", on); button.setAttribute("aria-pressed", String(on)); }
+  // }
   function setCamera(on) {
-    const canvas = $("placeholderStream");
-    if (!canvas) return;
-    if (on && !cameraFrame) {
-      cameraFrame = document.createElement("iframe");
-      cameraFrame.src = `http://${location.hostname}:8889/camera`;
-      cameraFrame.title = "Wombot camera stream";
-      cameraFrame.allow = "autoplay; fullscreen";
-      Object.assign(cameraFrame.style, { width: "100%", height: "100%", minHeight: "240px", border: "0", background: "#000", display: "block" });
-      canvas.hidden = true; canvas.insertAdjacentElement("afterend", cameraFrame);
-    } else if (!on) {
-      if (cameraFrame) cameraFrame.remove();
-      cameraFrame = null; canvas.hidden = false;
-    }
-    setText("statusText", on ? "CAM REQUESTED" : "CAM OFF");
-    const dot = $("liveDot"); if (dot) dot.classList.toggle("live", on);
-    const button = $("feedSwitch"); if (button) { button.classList.toggle("active", on); button.setAttribute("aria-pressed", String(on)); }
+  const canvas = $("placeholderStream");
+  if (!canvas) return;
+
+  if (on && !cameraFrame) {
+    cameraFrame = document.createElement("iframe");
+    cameraFrame.src = `http://${location.hostname}:8889/camera`;
+    cameraFrame.title = "Wombot camera stream";
+    cameraFrame.allow = "autoplay; fullscreen";
+    
+    // Extracted styling rules to let CSS clean up sizing dimensions natively
+    Object.assign(cameraFrame.style, { 
+      width: "100%", 
+      border: "0", 
+      background: "#000", 
+      display: "block" 
+    });
+
+    canvas.hidden = true; 
+    canvas.insertAdjacentElement("afterend", cameraFrame);
+  } else if (!on) {
+    if (cameraFrame) cameraFrame.remove();
+    cameraFrame = null; 
+    canvas.hidden = false;
   }
+
+  // Live indicator sync mappings
+  setText("statusText", on ? "CAM REQUESTED" : "CAM OFF");
+  
+  const dot = $("liveDot"); 
+  if (dot) dot.classList.toggle("live", on);
+  
+  const button = $("feedSwitch"); 
+  if (button) { 
+    button.classList.toggle("active", on); 
+    button.setAttribute("aria-pressed", String(on)); 
+  }
+}
+
+// --- INITIALIZATION ---
+// Force invoke a baseline 'Off' rendering pass immediately on page mount loops
+setCamera(false);
+
   function handleTelemetry(message) {
     latestTelemetryAt = Date.now();
     const data = message.data || {}, wheels = data.wheels || {};
@@ -113,7 +156,9 @@
   $("feedSwitch")?.addEventListener("click", () => sendCommand({ type: $("feedSwitch").getAttribute("aria-pressed") === "true" ? "camera_off" : "camera_on" }));
   $("estop")?.addEventListener("click", () => {
     if (!estopLatched) { estopLatched = true; updateEstop(); sendCommand({ type: "estop", reason: "operator" }); }
-    else if (confirm("Reset software E-stop? Ensure the rover is safe. Motors remain stopped until a new drive command.")) sendCommand({ type: "clear_estop" });
+    else if (confirm("Reset software E-stop? Ensure the rover is safe. Motors remain stopped until a new drive command.")) {
+      sendCommand({ type: "clear_estop" });
+      estopLatched = false; updateEstop();}
   });
   $("applyLedSettings")?.addEventListener("click", () => {
     const mode = $("ledMode")?.value || "state";

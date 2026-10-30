@@ -36,10 +36,26 @@
 .video-feed {
   background: #000;
   position: relative;
+  overflow: hidden;
+  /* width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+  border: 0; */
+}
+
+.video-feed iframe {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+  border: 0;
 }
 
 .stream-canvas {
-  transition: opacity 0.25s ease;
+  /* transition: opacity 0.25s ease; */
+  width: 100%;
+  aspect-ratio: 16 / 9; /* Forces a crisp 16:9 constraint layout shape */
+  background: #000000; /* Solid black fill box color */
+  display: block;
 }
 
 .stream-canvas.feed-off {
