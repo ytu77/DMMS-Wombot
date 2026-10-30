@@ -3,6 +3,7 @@
 
   const SEND_INTERVAL = 50, DEADZONE = 0.08;
   let lastSend = 0, everHadController = false, activeIndex = null;
+  let wasStopButtonPressed = false; 
   let keyboardThrottle = 0, keyboardSteering = 0, keyboardActive = false;
   
   // Tracking states for Pan/Tilt servos (0 - 180 degrees)
@@ -92,6 +93,7 @@
     const now = performance.now(), pad = getPad();
     let throttle = 0, steering = 0;
     let panDelta = 0, tiltDelta = 0;
+    let stopButtonIsCurrentlyPressed = false;
 
     // Freeze telemetry modifications if actively listening to bind inputs
     if (rebindingTarget) {
@@ -139,11 +141,18 @@
         if (btnStr === mappings.controller.pan_right && rx === 0) panDelta = 2;
 
         if (btnStr === mappings.controller.stop) {
-          window.RoverAPI?.stop();
-          pressed.clear();
-          recalcKeyboard();
+          stopButtonIsCurrentlyPressed = true;
+          
+          // ONLY click if it wasn't already held down in the last frame
+          if (!wasStopButtonPressed) {
+            $("estop")?.click(); 
+            pressed.clear();
+            recalcKeyboard();
+          }
         }
       });
+
+      wasStopButtonPressed = stopButtonIsCurrentlyPressed;
 
       keyboardActive = false;
     } else if (keyboardActive) {
@@ -160,6 +169,11 @@
       activeIndex = null;
       text("statController", everHadController ? "DISCONNECTED" : "WAITING FOR INPUT");
     }
+
+    // if (activeKeys.has(mappings.keyboard.stop)) {
+    //   if (window.RoverAPI?.emergencyStop) window.RoverAPI.emergencyStop(); // UPDATED FROM .stop()
+    //   return;
+    // }
 
     text("throttleStatus", `Throttle: ${throttle.toFixed(2)}`);
     text("steeringStatus", `Steering: ${steering.toFixed(2)}`);
@@ -199,7 +213,8 @@
     if (controlledActions.includes(key)) event.preventDefault();
 
     if (key === mappings.keyboard.stop && !event.repeat) {
-      window.RoverAPI?.stop();
+      // window.RoverAPI?.emergencyStop();
+      // $("estop")?.click();
       pressed.clear();
       recalcKeyboard();
       return;

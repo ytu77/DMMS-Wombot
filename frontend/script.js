@@ -156,7 +156,7 @@ setCamera(false);
   $("feedSwitch")?.addEventListener("click", () => sendCommand({ type: $("feedSwitch").getAttribute("aria-pressed") === "true" ? "camera_off" : "camera_on" }));
   $("estop")?.addEventListener("click", () => {
     if (!estopLatched) { estopLatched = true; updateEstop(); sendCommand({ type: "estop", reason: "operator" }); }
-    else if (confirm("Reset software E-stop? Ensure the rover is safe. Motors remain stopped until a new drive command.")) {
+    else /*if (confirm("Reset software E-stop? Ensure the rover is safe. Motors remain stopped until a new drive command."))*/ {
       sendCommand({ type: "clear_estop" });
       estopLatched = false; updateEstop();}
   });
