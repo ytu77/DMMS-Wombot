@@ -4,6 +4,8 @@
   const SEND_INTERVAL = 50, DEADZONE = 0.08;
   let lastSend = 0, everHadController = false, activeIndex = null;
   let wasStopButtonPressed = false; 
+  let ignoreInputsUntilRelease = false;
+
   let keyboardThrottle = 0, keyboardSteering = 0, keyboardActive = false;
   
   // Tracking states for Pan/Tilt servos (0 - 180 degrees)
@@ -102,10 +104,31 @@
           if (btn.pressed && rebindingTarget.inputType === "controller") {
             mappings.controller[rebindingTarget.action] = String(idx);
             rebindingTarget = null;
+            ignoreInputsUntilRelease = true;
             saveMappings();
           }
         });
       }
+      requestAnimationFrame(tick);
+      return;
+    }
+
+    if (ignoreInputsUntilRelease) {
+      // Check if any controller buttons are currently pressed
+      let anyControllerButtonPressed = false;
+      if (pad) {
+        anyControllerButtonPressed = pad.buttons.some(btn => btn.pressed);
+      }
+      
+      // If absolutely everything has been released, turn off the safety cooldown
+      if (pressed.size === 0 && !anyControllerButtonPressed) {
+        ignoreInputsUntilRelease = false;
+      }
+      
+      // Suppress inputs and bypass this frame cycle execution safely
+      text("throttleStatus", "Throttle: 0.00");
+      text("steeringStatus", "Steering: 0.00");
+      transmit(0, 0, now);
       requestAnimationFrame(tick);
       return;
     }
@@ -146,7 +169,7 @@
           // ONLY click if it wasn't already held down in the last frame
           if (!wasStopButtonPressed) {
             $("estop")?.click(); 
-            pressed.clear();
+            // pressed.clear();
             recalcKeyboard();
           }
         }
@@ -203,6 +226,7 @@
       event.preventDefault();
       mappings.keyboard[rebindingTarget.action] = key;
       rebindingTarget = null;
+      ignoreInputsUntilRelease = true;
       saveMappings();
       recalcKeyboard();
       return;
@@ -212,13 +236,17 @@
     const controlledActions = Object.values(mappings.keyboard);
     if (controlledActions.includes(key)) event.preventDefault();
 
-    if (key === mappings.keyboard.stop && !event.repeat) {
-      // window.RoverAPI?.emergencyStop();
-      // $("estop")?.click();
-      pressed.clear();
-      recalcKeyboard();
+    if (key === mappings.keyboard.stop) {
+      event.preventDefault(); // Stop the webpage from scrolling down when pressing Space
+      
+      if (!event.repeat) {    // Blocks the browser's automatic rapid-fire repetition
+        $("estop")?.click(); 
+        // wasStopButtonPressed = stopButtonIsCurrentlyPressed;
+        recalcKeyboard();     // Updates layout calculations safely
+      }
       return;
     }
+    // wasStopButtonPressed = stopButtonIsCurrentlyPressed;
 
     pressed.add(key);
     recalcKeyboard();
