@@ -161,13 +161,40 @@ setCamera(false);
       estopLatched = false; updateEstop();}
   });
   $("applyLedSettings")?.addEventListener("click", () => {
-    const mode = $("ledMode")?.value || "state";
-    const colour = $("ledColour")?.value || "#00e676";
-    const settings = { mode: mode === "custom" ? "solid" : mode, colour, brightness: Number($("ledBrightness")?.value ?? 75), speed: Number($("ledSpeed")?.value ?? 50) };
-    const sent = sendCommand({ type: "led", ...settings });
-    setText("ledFeedback", sent ? "Lighting command sent; waiting for ESP32 acknowledgement." : "Not sent: Pi connection unavailable.");
+    const mode = $("ledMode")?.value || "state"; // 'state', 'wave', 'snowflake', 'circulating', or 'custom'
+    const colour = $("ledColour")?.value || "#00e676"; // Hex string from picker
+    
+    const settings = { 
+      mode: mode === "custom" ? "solid" : mode, 
+      colour: colour, 
+      brightness: Number($("ledBrightness")?.value ?? 75), 
+      speed: Number($("ledSpeed")?.value ?? 50) 
+    };
+    
+    const sent = sendCommand({ 
+      type: "command",
+      cmd: "led",
+      id: Date.now() % 10000,
+      v: 1,
+      args: settings
+    });
+    
+    setText("ledFeedback", sent ? "Custom lighting command sent; waiting for ESP32 acknowledgement." : "Not sent: Pi connection unavailable.");
   });
-  $("applyMode")?.addEventListener("click", () => setText("modeFeedback", "UI-only for now; operating modes are not implemented in protocol v1."));
+  $("applyMode")?.addEventListener("click", () => {
+    // Reads from your HTML mode select dropdown element
+    const selectedMode = $("roverMode")?.value || "interactive"; 
+    
+    const sent = sendCommand({ 
+      type: "command", 
+      cmd: "configure", 
+      id: Date.now() % 10000, // Unique transaction ID tracking
+      v: 1,
+      args: { mode: selectedMode } 
+    });
+    
+    setText("modeFeedback", sent ? `Configuration sent: transitioning to ${selectedMode}...` : "Not sent: Pi connection unavailable.");
+  });
   $("ledColour")?.addEventListener("input", (event) => { setText("ledColourHex", event.target.value.toUpperCase()); const preview = $("ledPreview"); if (preview) preview.style.background = event.target.value; });
   for (const [rangeId, labelId] of [["ledBrightness", "brightnessValue"], ["ledSpeed", "speedValue"]]) $(rangeId)?.addEventListener("input", (event) => setText(labelId, `${event.target.value}%`));
   setInterval(() => { if (latestTelemetryAt && Date.now() - latestTelemetryAt > 2000 && !estopLatched) setText("statRoverState", "TELEMETRY STALE"); }, 500);
