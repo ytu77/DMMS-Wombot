@@ -247,6 +247,14 @@ async def handle_browser_message(ws: WebSocket, data: dict[str, Any]) -> None:
     if kind == "ping":
         await ws.send_text(json.dumps({"type": "pong", "ts_ms": int(time.monotonic() * 1000)}))
         return
+    if kind == "command" and data.get("cmd") == "configure":
+        args = data.get("args", {})
+        if not args.get("mode"):
+            await ui_error(ws, "Configure command requires a mode argument.")
+            return
+        if not send_to_esp32(esp_command("configure", args)):
+            await ui_error(ws, "ESP32 serial is unavailable.", "ESP32_UNAVAILABLE")
+        return
     await ui_error(ws, f"Unknown browser command: {kind!r}", "INVALID_COMMAND")
 
 @app.websocket("/ws")
