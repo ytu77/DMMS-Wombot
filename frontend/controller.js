@@ -1,8 +1,8 @@
 (() => {
   "use strict";
 
-  const SEND_INTERVAL = 50, DEADZONE = 0.08;
-  let lastSend = 0, everHadController = false, activeIndex = null;
+  const SEND_INTERVAL = 100, SERVO_SEND_INTERVAL = 100, DEADZONE = 0.08;
+  let lastSend = 0, lastServoSend = 0, everHadController = false, activeIndex = null;
   let wasStopButtonPressed = false; 
   let ignoreInputsUntilRelease = false;
 
@@ -209,7 +209,16 @@
       currentPan = Math.max(0, Math.min(180, currentPan + panDelta));
       currentTilt = Math.max(0, Math.min(90, currentTilt + tiltDelta));
       if (window.RoverAPI?.setServos) {
-        window.RoverAPI.setServos(Math.round(currentPan), Math.round(currentTilt));
+        if (panDelta !== 0 || tiltDelta !== 0) {
+          currentPan = Math.max(0, Math.min(180, currentPan + panDelta));
+          currentTilt = Math.max(0, Math.min(90, currentTilt + tiltDelta));
+          
+          // Rate limit servo commands to prevent flooding the ESP32 serial buffer
+          if (now - lastServoSend >= SERVO_SEND_INTERVAL && window.RoverAPI?.setServos) {
+            window.RoverAPI.setServos(Math.round(currentPan), Math.round(currentTilt));
+            lastServoSend = now;
+          }
+        }
       }
     }
 
