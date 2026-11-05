@@ -182,18 +182,57 @@ setCamera(false);
     setText("ledFeedback", sent ? "Custom lighting command sent; waiting for ESP32 acknowledgement." : "Not sent: Pi connection unavailable.");
   });
   $("applyMode")?.addEventListener("click", () => {
-    // Reads from your HTML mode select dropdown element
-    const selectedMode = $("roverMode")?.value || "interactive"; 
-    
-    const sent = sendCommand({ 
-      type: "command", 
-      cmd: "configure", 
-      id: Date.now() % 10000, // Unique transaction ID tracking
-      v: 1,
-      args: { mode: selectedMode } 
+    const selectedMode = $("controlMode")?.value || "interactive";
+
+    const sent = sendCommand({
+        type: "command",
+        cmd: "configure",
+        id: Date.now() % 10000,
+        v: 1,
+        args: {
+            mode: selectedMode
+        }
     });
-    
-    setText("modeFeedback", sent ? `Configuration sent: transitioning to ${selectedMode}...` : "Not sent: Pi connection unavailable.");
+
+    setText(
+        "modeFeedback",
+        sent
+            ? `Configuration sent: ${selectedMode}`
+            : "Not sent: Pi connection unavailable."
+    );
+  });
+  const modeDescriptions = {
+    interactive: {
+        title: "Interactive mode",
+        description:
+            "Motors are disabled. The rover is stationary and can be safely inspected or handled."
+    },
+    manual: {
+        title: "Manual mode",
+        description:
+            "Control the rover using keyboard or gamepad inputs from the connected laptop. Camera and servo controls are available."
+    },
+    automatic: {
+        title: "Automatic mode",
+        description:
+            "The rover performs an autonomous demonstration, driving in a continuous circle without laptop driving inputs."
+    }
+  };
+
+  $("controlMode")?.addEventListener("change", () => {
+      const mode = $("controlMode").value;
+      const description = modeDescriptions[mode];
+
+      if (!description) return;
+
+      const container = $("modeDescription");
+
+      if (container) {
+          container.innerHTML = `
+              <strong>${description.title}</strong>
+              <p>${description.description}</p>
+          `;
+      }
   });
   $("ledColour")?.addEventListener("input", (event) => { setText("ledColourHex", event.target.value.toUpperCase()); const preview = $("ledPreview"); if (preview) preview.style.background = event.target.value; });
   for (const [rangeId, labelId] of [["ledBrightness", "brightnessValue"], ["ledSpeed", "speedValue"]]) $(rangeId)?.addEventListener("input", (event) => setText(labelId, `${event.target.value}%`));
