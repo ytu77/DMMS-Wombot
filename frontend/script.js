@@ -160,15 +160,73 @@ setCamera(false);
       sendCommand({ type: "clear_estop" });
       estopLatched = false; updateEstop();}
   });
+
+
+  // --- INTEGRATED LED PREVIEW & SETTINGS LOGIC ---
+  const ledMode = $("ledMode");
+  const ledColour = $("ledColour");
+  const ledPreview = $("ledPreview");
+  const ledPreviewText = $("ledPreviewText");
+  const customControls = $("customColourControls");
+  const brightness = $("ledBrightness");
+  const speed = $("ledSpeed");
+
+  function updateLedPreview() {
+    if (!ledMode || !ledPreview) return;
+    const mode = ledMode.value;
+    const colour = ledColour.value;
+
+    ledPreview.classList.remove("rgb-wave", "snowflakes", "circulating");
+    ledPreview.style.background = "";
+    ledPreview.style.color = "";
+    if (customControls) customControls.hidden = mode !== "custom";
+    ledPreview.style.opacity = Number(brightness.value) / 100;
+
+    if (mode === "state") {
+      ledPreview.style.color = "#00e676";
+      if (ledPreviewText) ledPreviewText.textContent = "NOMINAL";
+    } else if (mode === "rgb-wave") {
+      ledPreview.classList.add("rgb-wave");
+      if (ledPreviewText) ledPreviewText.textContent = "RGB WAVE";
+    } else if (mode === "snowflakes") {
+      ledPreview.classList.add("snowflakes");
+      if (ledPreviewText) ledPreviewText.textContent = "SNOWFLAKES";
+    } else if (mode === "circulating") {
+      ledPreview.classList.add("circulating");
+      if (ledPreviewText) ledPreviewText.textContent = "CIRCULATING";
+    } else {
+      ledPreview.style.background = colour;
+      ledPreview.style.color = "#fff";
+      if (ledPreviewText) ledPreviewText.textContent = colour.toUpperCase();
+    }
+
+    setText("ledColourHex", colour.toUpperCase());
+  }
+
+  ledMode?.addEventListener("change", updateLedPreview);
+  ledColour?.addEventListener("input", updateLedPreview);
+
+  brightness?.addEventListener("input", (event) => {
+    setText("brightnessValue", `${event.target.value}%`);
+    updateLedPreview();
+  });
+
+  speed?.addEventListener("input", (event) => {
+    setText("speedValue", `${event.target.value}%`);
+    if (ledPreview) {
+      ledPreview.style.animationDuration = `${Math.max(0.5, 6 - Number(event.target.value) * 0.055)}s`;
+    }
+  });
+
   $("applyLedSettings")?.addEventListener("click", () => {
-    const mode = $("ledMode")?.value || "state"; // 'state', 'wave', 'snowflake', 'circulating', or 'custom'
-    const colour = $("ledColour")?.value || "#00e676"; // Hex string from picker
+    const mode = ledMode?.value || "state";
+    const colour = ledColour?.value || "#00e676";
     
     const settings = { 
       mode: mode === "custom" ? "solid" : mode, 
       colour: colour, 
-      brightness: Number($("ledBrightness")?.value ?? 75), 
-      speed: Number($("ledSpeed")?.value ?? 50) 
+      brightness: Number(brightness?.value ?? 75), 
+      speed: Number(speed?.value ?? 50) 
     };
     
     const sent = sendCommand({ 
