@@ -12,7 +12,7 @@
   let keyboardThrottle = 0, keyboardSteering = 0, keyboardActive = false;
   
   // Tracking states for Pan/Tilt servos (0 - 180 degrees)
-  let currentPan = 90, currentTilt = 90;
+  let currentPan = 90, currentTilt = 45;
   
   // Rebind tracking parameters
   let rebindingTarget = null; // Contains: { action, inputType }
@@ -195,7 +195,7 @@
       // Apply stepped servo changes only if cooldown has passed
       if ((servoStepX !== 0 || servoStepY !== 0) && (now - lastControllerServoTime >= SERVO_COOLDOWN_MS)) {
         currentPan = Math.max(0, Math.min(180, currentPan + servoStepX));
-        currentTilt = Math.max(0, Math.min(180, currentTilt + servoStepY));
+        currentTilt = Math.max(0, Math.min(90, currentTilt + servoStepY));
         
         if (window.RoverAPI?.setServos) {
           window.RoverAPI.setServos(Math.round(currentPan), Math.round(currentTilt));
@@ -255,7 +255,7 @@
 
     if (key === mappings.keyboard.pan_up) {
       event.preventDefault();
-      currentTilt = Math.min(180, currentTilt + step);
+      currentTilt = Math.min(90, currentTilt + step);
       window.RoverAPI?.setServos(Math.round(currentPan), Math.round(currentTilt));
       return;
     }
