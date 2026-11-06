@@ -2,9 +2,12 @@
   "use strict";
 
   const SEND_INTERVAL = 100, SERVO_SEND_INTERVAL = 100, DEADZONE = 0.08;
-  let lastSend = 0, lastServoSend = 0, everHadController = false, activeIndex = null;
+  let lastSend = 0, lastServoSend = 0, lastControllerServoTime = 0, everHadController = false, activeIndex = null;
   let wasStopButtonPressed = false; 
   let ignoreInputsUntilRelease = false;
+
+  const SERVO_COOLDOWN_MS = 150; // Delay between consecutive steps when holding a button/stick
+  const STEP_DEGREES = 5;       // Exact degrees to move per step
 
   let keyboardThrottle = 0, keyboardSteering = 0, keyboardActive = false;
   
@@ -145,8 +148,18 @@
       const rx = deadzone(pad.axes[2] || 0);
       const ry = deadzone(-(pad.axes[3] || 0)); // Invert Y axis for look-up standard
 
-      if (rx !== 0) panDelta = rx * 3;
-      if (ry !== 0) tiltDelta = ry * 3;
+      let servoStepX = 0;
+      let servoStepY = 0;
+
+      // Check Analog Stick directions (threshold > 0.5 for intentional push)
+      if (rx > 0.5) servoStepX = STEP_DEGREES;
+      else if (rx < -0.5) servoStepX = -STEP_DEGREES;
+
+      if (ry > 0.5) servoStepY = STEP_DEGREES;
+      else if (ry < -0.5) servoStepY = -STEP_DEGREES;
+
+      // if (rx !== 0) panDelta = rx * 3;
+      // if (ry !== 0) tiltDelta = ry * 3;
 
       // Digital Buttons & D-Pad Fallbacks Mapping
       pad.buttons.forEach((btn, index) => {
@@ -158,10 +171,10 @@
         if (btnStr === mappings.controller.left && steering === 0) steering = -1;
         if (btnStr === mappings.controller.right && steering === 0) steering = 1;
 
-        if (btnStr === mappings.controller.pan_up && ry === 0) tiltDelta = 2;
-        if (btnStr === mappings.controller.pan_down && ry === 0) tiltDelta = -2;
-        if (btnStr === mappings.controller.pan_left && rx === 0) panDelta = -2;
-        if (btnStr === mappings.controller.pan_right && rx === 0) panDelta = 2;
+        if (btnStr === mappings.controller.pan_up && ry === 0) servoStepY = STEP_DEGREES;
+        if (btnStr === mappings.controller.pan_down && ry === 0) servoStepY = -STEP_DEGREES;
+        if (btnStr === mappings.controller.pan_left && rx === 0) servoStepX = -STEP_DEGREES;
+        if (btnStr === mappings.controller.pan_right && rx === 0) servoStepX = STEP_DEGREES;
 
         if (btnStr === mappings.controller.stop) {
           stopButtonIsCurrentlyPressed = true;
@@ -178,16 +191,27 @@
       wasStopButtonPressed = stopButtonIsCurrentlyPressed;
 
       keyboardActive = false;
+
+      // Apply stepped servo changes only if cooldown has passed
+      if ((servoStepX !== 0 || servoStepY !== 0) && (now - lastControllerServoTime >= SERVO_COOLDOWN_MS)) {
+        currentPan = Math.max(0, Math.min(180, currentPan + servoStepX));
+        currentTilt = Math.max(0, Math.min(180, currentTilt + servoStepY));
+        
+        if (window.RoverAPI?.setServos) {
+          window.RoverAPI.setServos(Math.round(currentPan), Math.round(currentTilt));
+        }
+        lastControllerServoTime = now;
+      }
     } else if (keyboardActive) {
       text("statController", "KEYBOARD");
       throttle = keyboardThrottle;
       steering = keyboardSteering;
 
       // Keyboard Panning Handling
-      if (pressed.has(mappings.keyboard.pan_up)) tiltDelta = 2;
-      if (pressed.has(mappings.keyboard.pan_down)) tiltDelta = -2;
-      if (pressed.has(mappings.keyboard.pan_left)) panDelta = -2;
-      if (pressed.has(mappings.keyboard.pan_right)) panDelta = 2;
+      // if (pressed.has(mappings.keyboard.pan_up)) tiltDelta = 2;
+      // if (pressed.has(mappings.keyboard.pan_down)) tiltDelta = -2;
+      // if (pressed.has(mappings.keyboard.pan_left)) panDelta = -2;
+      // if (pressed.has(mappings.keyboard.pan_right)) panDelta = 2;
     } else {
       activeIndex = null;
       text("statController", everHadController ? "DISCONNECTED" : "WAITING FOR INPUT");
@@ -227,6 +251,33 @@
 
   // --- Keyboard Events Matrix ---
   window.addEventListener("keydown", (event) => {
+    const step = 5; // Change this value to make steps smaller (e.g. 2) or larger (e.g. 10)
+
+    if (key === mappings.keyboard.pan_up) {
+      event.preventDefault();
+      currentTilt = Math.min(180, currentTilt + step);
+      window.RoverAPI?.setServos(Math.round(currentPan), Math.round(currentTilt));
+      return;
+    }
+    if (key === mappings.keyboard.pan_down) {
+      event.preventDefault();
+      currentTilt = Math.max(0, currentTilt - step);
+      window.RoverAPI?.setServos(Math.round(currentPan), Math.round(currentTilt));
+      return;
+    }
+    if (key === mappings.keyboard.pan_left) {
+      event.preventDefault();
+      currentPan = Math.max(0, currentPan - step);
+      window.RoverAPI?.setServos(Math.round(currentPan), Math.round(currentTilt));
+      return;
+    }
+    if (key === mappings.keyboard.pan_right) {
+      event.preventDefault();
+      currentPan = Math.min(180, currentPan + step);
+      window.RoverAPI?.setServos(Math.round(currentPan), Math.round(currentTilt));
+      return;
+    }
+
     if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target?.tagName)) return;
     const key = event.key.toLowerCase();
 
