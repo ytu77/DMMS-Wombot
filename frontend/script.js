@@ -176,20 +176,20 @@ setCamera(false);
     const mode = ledMode.value;
     const colour = ledColour.value;
 
-    ledPreview.classList.remove("rgb-wave", "snowflakes", "circulating");
+    ledPreview.classList.remove("wave", "snowflake", "circulating");
     ledPreview.style.background = "";
     ledPreview.style.color = "";
-    if (customControls) customControls.hidden = mode !== "custom";
+    if (customControls) customControls.hidden = mode !== "solid";
     ledPreview.style.opacity = Number(brightness.value) / 100;
 
     if (mode === "state") {
       ledPreview.style.color = "#00e676";
       if (ledPreviewText) ledPreviewText.textContent = "NOMINAL";
-    } else if (mode === "rgb-wave") {
-      ledPreview.classList.add("rgb-wave");
+    } else if (mode === "wave") {
+      ledPreview.classList.add("wave");
       if (ledPreviewText) ledPreviewText.textContent = "RGB WAVE";
-    } else if (mode === "snowflakes") {
-      ledPreview.classList.add("snowflakes");
+    } else if (mode === "snowflake") {
+      ledPreview.classList.add("snowflake");
       if (ledPreviewText) ledPreviewText.textContent = "SNOWFLAKES";
     } else if (mode === "circulating") {
       ledPreview.classList.add("circulating");
@@ -223,7 +223,7 @@ setCamera(false);
     const colour = ledColour?.value || "#00e676";
     
     const settings = { 
-      mode: mode === "custom" ? "solid" : mode, 
+      mode: mode === "solid" ? "solid" : mode, 
       colour: colour, 
       brightness: Number(brightness?.value ?? 75), 
       speed: Number(speed?.value ?? 50) 
