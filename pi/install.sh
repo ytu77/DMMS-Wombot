@@ -68,7 +68,7 @@ apt-get install -y \
     python3-dev \
     build-essential \
     ffmpeg \
-    networkmanager \
+    network-manager \
     curl \
     wget
 
