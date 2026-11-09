@@ -113,7 +113,6 @@ success "Wi-Fi Access Point 'Wombot' configured (Password: wombot123)."
 # ----------------------------
 info "Installing MediaMTX..."
 
-MEDIAMTX_VERSION="v1.11.3" # Adjust version if needed
 ARCH=$(uname -m)
 if [[ "${ARCH}" == "aarch64" ]]; then
     MEDIAMTX_ARCH="arm64"
@@ -123,10 +122,17 @@ else
     MEDIAMTX_ARCH="amd64"
 fi
 
+# Fetch the latest release tag dynamically from GitHub API
+MEDIAMTX_VERSION=$(curl -s https://api.github.com/repos/bluenviron/mediamtx/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+if [[ -z "${MEDIAMTX_VERSION}" ]]; then
+    MEDIAMTX_VERSION="v1.21.3" # Safe fallback version if API limit is hit
+fi
+
 MEDIAMTX_TAR="mediamtx_${MEDIAMTX_VERSION}_linux_${MEDIAMTX_ARCH}.tar.gz"
 MEDIAMTX_URL="https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/${MEDIAMTX_TAR}"
 
-wget -qO /tmp/mediamtx.tar.gz "${MEDIAMTX_URL}" || error "Failed to download MediaMTX."
+info "Downloading MediaMTX ${MEDIAMTX_VERSION} for ${MEDIAMTX_ARCH}..."
+wget -qO /tmp/mediamtx.tar.gz "${MEDIAMTX_URL}" || error "Failed to download MediaMTX from ${MEDIAMTX_URL}"
 tar -xzf /tmp/mediamtx.tar.gz -C /usr/local/bin mediamtx
 rm /tmp/mediamtx.tar.gz
 
