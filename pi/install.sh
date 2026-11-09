@@ -1,210 +1,207 @@
 #!/usr/bin/env bash
-
-# ============================================================
-# Wombot Raspberry Pi - Complete Automated Installer
-#
-# Phase 1 & 2 Combined:
-#   - Checks OS & system dependencies
-#   - Sets up Python virtual environment & packages
-#   - Configures Wi-Fi Access Point ("Wombot") via NetworkManager
-#   - Installs MediaMTX & writes video streaming configuration
-#   - Creates and enables Systemd services for Uvicorn & MediaMTX
-#
-# Run from repository root or pi dir:
-#   sudo ./pi/install.sh
-# ============================================================
+# Wombot installer for the agreed monorepo layout.
+# Run from the normal project account: sudo ./pi/install.sh
+# Optional: sudo env AP_PASSWORD='strong-password' ./pi/install.sh
+# Optional: sudo env MEDIAMTX_VERSION=v1.20.1 ./pi/install.sh
 
 set -Eeuo pipefail
+IFS=$'\n\t'
+log(){ printf '\n[INFO] %s\n' "$*"; }
+ok(){ printf '[ OK ] %s\n' "$*"; }
+warn(){ printf '[WARN] %s\n' "$*" >&2; }
+die(){ printf '[FAIL] %s\n' "$*" >&2; exit 1; }
+trap 'rc=$?; echo "[FAIL] stopped at line $LINENO (exit $rc)" >&2; exit "$rc"' ERR
 
-# Must be run as root/sudo for network & systemd configurations
-if [[ $EUID -ne 0 ]]; then
-   echo "[ERROR] This script must be run with sudo privileges." >&2
-   exit 1
-fi
-
-# ----------------------------
-# Paths & Variables
-# ----------------------------
+[[ $EUID -eq 0 ]] || die "Run with sudo: sudo ./pi/install.sh"
+REAL_USER="${SUDO_USER:-}"
+[[ -n "$REAL_USER" && "$REAL_USER" != root ]] || die "Run via sudo from your normal project account."
+id "$REAL_USER" >/dev/null 2>&1 || die "Unknown user: $REAL_USER"
+REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
+REAL_GROUP="$(id -gn "$REAL_USER")"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-PI_DIR="${SCRIPT_DIR}"
-BACKEND_DIR="${PI_DIR}/backend"
-REQUIREMENTS_FILE="${PI_DIR}/requirements.txt"
-VENV_DIR="${PI_DIR}/.venv"
+PI_DIR="$SCRIPT_DIR"
+REPO_DIR="$(cd -- "$PI_DIR/.." && pwd)"
+BACKEND_DIR="$PI_DIR/backend"
+VENV_DIR="$PI_DIR/.venv"
+REQ="$PI_DIR/requirements.txt"
 
-# Find the actual non-root user (e.g., 'pi') for systemd file ownership
-REAL_USER="${SUDO_USER:-$(whoami)}"
-REAL_HOME="$(eval echo ~${REAL_USER})"
+AP_PROFILE="${AP_PROFILE:-Wombot}"
+AP_SSID="${AP_SSID:-Wombot}"
+AP_ADDRESS="${AP_ADDRESS:-10.42.0.1/24}"
+MEDIAMTX_VERSION="${MEDIAMTX_VERSION:-v1.20.1}"
+MTX_BIN=/usr/local/bin/mediamtx
+MTX_CONFIG=/etc/mediamtx.yml
 
-# ----------------------------
-# Output helpers
-# ----------------------------
+log "Preflight checks"
+[[ -r /etc/os-release ]] || die "Missing /etc/os-release"
+. /etc/os-release
+[[ "${ID:-}" == debian || "${ID:-}" == raspbian ]] || die "Expected Debian/Raspberry Pi OS; got ${ID:-unknown}"
+[[ -f "$BACKEND_DIR/main.py" ]] || die "Expected pi/backend/main.py. Move your FastAPI app there first."
+[[ -f "$REQ" ]] || die "Missing pi/requirements.txt"
+case "$(uname -m)" in aarch64|armv7l|x86_64) ;; *) die "Unsupported architecture: $(uname -m)";; esac
+ok "${PRETTY_NAME:-Debian}; repository layout found"
 
-info() { echo -e "\n[INFO] $1"; }
-success() { echo -e "\n[OK] $1"; }
-error() { echo -e "\n[ERROR] $1" >&2; exit 1; }
-
-trap 'echo -e "\n[ERROR] Installation failed on line ${LINENO}." >&2' ERR
-
-# ----------------------------
-# 1. Operating System Check
-# ----------------------------
-info "Checking operating system..."
-[[ -f /etc/os-release ]] || error "Cannot identify operating system."
-source /etc/os-release
-[[ "${ID:-}" == "raspbian" || "${ID:-}" == "debian" ]] || error "Intended for Raspberry Pi OS / Debian."
-success "Detected ${PRETTY_NAME:-Debian-based operating system}"
-
-# ----------------------------
-# 2. System Dependencies & FFmpeg
-# ----------------------------
-info "Installing system packages and FFmpeg..."
+log "Install OS dependencies"
+export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y \
-    python3 \
-    python3-venv \
-    python3-pip \
-    python3-dev \
-    build-essential \
-    ffmpeg \
-    network-manager \
-    curl \
-    wget
-
-success "System dependencies and FFmpeg installed."
-
-# ----------------------------
-# 3. Python Virtual Environment
-# ----------------------------
-info "Setting up Python virtual environment..."
-if [[ ! -d "${VENV_DIR}" ]]; then
-    python3 -m venv "${VENV_DIR}"
-    chown -R "${REAL_USER}:${REAL_USER}" "${VENV_DIR}"
-else
-    info "Existing virtual environment found; reusing it."
-fi
-
-info "Installing Python packages..."
-su - "${REAL_USER}" -c "${VENV_DIR}/bin/python -m pip install --upgrade pip"
-su - "${REAL_USER}" -c "${VENV_DIR}/bin/python -m pip install -r ${REQUIREMENTS_FILE}"
-success "Python dependencies installed."
-
-# ----------------------------
-# 4. Configure Wi-Fi Access Point ("Wombot")
-# ----------------------------
-info "Configuring Wi-Fi Access Point (Wombot)..."
-
-# Check if NetworkManager is controlling wifi
+apt-get install -y ca-certificates curl tar python3 python3-venv python3-pip \
+  python3-dev build-essential ffmpeg v4l-utils network-manager
 systemctl enable --now NetworkManager
 
-# Delete existing Wombot AP profile if it exists to avoid duplication
-nmcli con delete Wombot-AP >/dev/null 2>&1 || true
+log "Create/update Python environment"
+if [[ ! -x "$VENV_DIR/bin/python" ]]; then
+  install -d -o "$REAL_USER" -g "$REAL_GROUP" "$VENV_DIR"
+  runuser -u "$REAL_USER" -- python3 -m venv "$VENV_DIR"
+fi
+chown -R "$REAL_USER:$REAL_GROUP" "$VENV_DIR"
+runuser -u "$REAL_USER" -- "$VENV_DIR/bin/python" -m pip install --upgrade pip
+runuser -u "$REAL_USER" -- "$VENV_DIR/bin/python" -m pip install -r "$REQ"
+runuser -u "$REAL_USER" -- "$VENV_DIR/bin/python" -m compileall -q "$BACKEND_DIR"
+for g in video dialout; do getent group "$g" >/dev/null && usermod -aG "$g" "$REAL_USER" || true; done
+ok "Python environment ready: $VENV_DIR"
 
-# Create Wi-Fi AP connection profile (Password: wombot123)
-nmcli con add type wifi ifname wlan0 con-name Wombot-AP autoconnect yes ssid Wombot
-nmcli con modify Wombot-AP 802-11-wireless.mode ap 802-11-wireless.band bg ipv4.method shared
-nmcli con modify Wombot-AP wifi-sec.key-mgmt wpa-psk wifi-sec.psk "wombot123"
-
-success "Wi-Fi Access Point 'Wombot' configured (Password: wombot123)."
-
-# ----------------------------
-# 5. Install & Configure MediaMTX
-# ----------------------------
-info "Installing MediaMTX..."
-
-ARCH=$(uname -m)
-if [[ "${ARCH}" == "aarch64" ]]; then
-    MEDIAMTX_ARCH="arm64"
-elif [[ "${ARCH}" == "armv7l" ]]; then
-    MEDIAMTX_ARCH="armv7"
+log "Configure Wi-Fi access point"
+nmcli radio wifi on || true
+if nmcli -t -f NAME connection show | grep -Fxq "$AP_PROFILE"; then
+  log "Reusing existing NetworkManager profile: $AP_PROFILE"
+  nmcli connection modify "$AP_PROFILE" connection.interface-name wlan0 \
+    connection.autoconnect yes 802-11-wireless.ssid "$AP_SSID" \
+    802-11-wireless.mode ap 802-11-wireless.band bg \
+    ipv4.method shared ipv4.addresses "$AP_ADDRESS" ipv6.method disabled
 else
-    MEDIAMTX_ARCH="amd64"
+  nmcli connection add type wifi ifname wlan0 con-name "$AP_PROFILE" ssid "$AP_SSID"
+  nmcli connection modify "$AP_PROFILE" connection.autoconnect yes \
+    802-11-wireless.mode ap 802-11-wireless.band bg \
+    ipv4.method shared ipv4.addresses "$AP_ADDRESS" ipv6.method disabled
 fi
 
-# Fetch the latest release tag dynamically from GitHub API
-MEDIAMTX_VERSION=$(curl -s https://api.github.com/repos/bluenviron/mediamtx/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-if [[ -z "${MEDIAMTX_VERSION}" ]]; then
-    MEDIAMTX_VERSION="v1.21.3" # Safe fallback version if API limit is hit
+if [[ -n "${AP_PASSWORD:-}" ]]; then
+  [[ ${#AP_PASSWORD} -ge 8 ]] || die "AP_PASSWORD must be at least 8 characters"
+  nmcli connection modify "$AP_PROFILE" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$AP_PASSWORD"
+elif ! nmcli -g 802-11-wireless-security.key-mgmt connection show "$AP_PROFILE" 2>/dev/null | grep -q .; then
+  if [[ -t 0 ]]; then
+    read -r -s -p "Set Wi-Fi password for $AP_SSID (8+ characters): " AP_PASSWORD
+    echo
+    [[ ${#AP_PASSWORD} -ge 8 ]] || die "Password must be at least 8 characters"
+    nmcli connection modify "$AP_PROFILE" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$AP_PASSWORD"
+  else
+    die "New AP has no password. Rerun with: sudo env AP_PASSWORD='...' ./pi/install.sh"
+  fi
+fi
+ok "AP profile configured. Existing saved password is preserved unless AP_PASSWORD is supplied."
+warn "Installer will not force AP reconnection because that could disconnect your SSH session."
+
+log "Install MediaMTX"
+case "$(uname -m)" in aarch64) MTX_ARCH=arm64;; armv7l) MTX_ARCH=armv7;; x86_64) MTX_ARCH=amd64;; esac
+if [[ ! -x "$MTX_BIN" || "${FORCE_MEDIAMTX_INSTALL:-0}" == 1 ]]; then
+  archive="mediamtx_${MEDIAMTX_VERSION}_linux_${MTX_ARCH}.tar.gz"
+  url="https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/${archive}"
+  tmp="$(mktemp -d)"
+  curl -fL --retry 3 "$url" -o "$tmp/mediamtx.tar.gz"
+  tar -xzf "$tmp/mediamtx.tar.gz" -C "$tmp" mediamtx
+  install -m 0755 "$tmp/mediamtx" "$MTX_BIN"
+  rm -rf "$tmp"
+else
+  log "Keeping existing $MTX_BIN (set FORCE_MEDIAMTX_INSTALL=1 to replace)"
 fi
 
-MEDIAMTX_TAR="mediamtx_${MEDIAMTX_VERSION}_linux_${MEDIAMTX_ARCH}.tar.gz"
-MEDIAMTX_URL="https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/${MEDIAMTX_TAR}"
+# Keep an existing config intact. On a new device, create a minimal config.
+# FFmpeg is launched by the backend on Camera ON, not by MediaMTX at boot.
+if [[ ! -e "$MTX_CONFIG" && -f "$REAL_HOME/mediamtx.yml" ]]; then
+  # The previously working Wombot setup kept its config in the user's home.
+  # Migrate that config instead of replacing it with generic defaults.
+  install -m 0644 "$REAL_HOME/mediamtx.yml" "$MTX_CONFIG"
+  log "Migrated existing MediaMTX config from $REAL_HOME/mediamtx.yml"
+fi
 
-info "Downloading MediaMTX ${MEDIAMTX_VERSION} for ${MEDIAMTX_ARCH}..."
-wget -qO /tmp/mediamtx.tar.gz "${MEDIAMTX_URL}" || error "Failed to download MediaMTX from ${MEDIAMTX_URL}"
-tar -xzf /tmp/mediamtx.tar.gz -C /usr/local/bin mediamtx
-rm /tmp/mediamtx.tar.gz
-
-info "Writing MediaMTX configuration file..."
-cat << 'EOF' > /etc/mediamtx.yml
+if [[ ! -e "$MTX_CONFIG" ]]; then
+  cat > "$MTX_CONFIG" <<'YAML'
+logLevel: info
+rtsp: yes
+rtspAddress: :8554
+hls: yes
+hlsAddress: :8888
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcAdditionalHosts:
+  - 10.42.0.1
 paths:
-  camera:
-    runOnInit: ffmpeg -f v4l2 -input_format mjpeg -video_size 1280x720 -framerate 30 -i /dev/video0 -vf format=yuv420p -c:v h264_v4l2m2m -f rtsp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
-    runOnInitRestart: yes
-
   all_others:
-EOF
+YAML
+  chmod 0644 "$MTX_CONFIG"
+else
+  warn "Preserving existing $MTX_CONFIG. Verify webrtcAdditionalHosts contains 10.42.0.1."
+fi
 
-success "MediaMTX installed and configured."
-
-# ----------------------------
-# 6. Create Systemd Services
-# ----------------------------
-info "Creating systemd background services..."
-
-# A. MediaMTX Service
-cat << EOF > /etc/systemd/system/mediamtx.service
+log "Install systemd units"
+cat > /etc/systemd/system/mediamtx.service <<EOF
 [Unit]
-Description=MediaMTX RTSP Server
-After=network.target
-
+Description=MediaMTX streaming server
+Wants=network-online.target
+After=network-online.target
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/mediamtx /etc/mediamtx.yml
-Restart=always
+ExecStart=$MTX_BIN $MTX_CONFIG
+Restart=on-failure
 RestartSec=3
-
+User=root
+NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# B. Wombot Backend Uvicorn Service
-cat << EOF > /etc/systemd/system/wombot.service
+cat > /etc/systemd/system/wombot.service <<EOF
 [Unit]
-Description=Wombot FastAPI Backend
-After=network.target mediamtx.service
-
+Description=Wombot FastAPI backend
+Wants=network-online.target mediamtx.service
+After=network-online.target mediamtx.service
 [Service]
 Type=simple
-User=${REAL_USER}
-WorkingDirectory=${PI_DIR}
-ExecStart=${VENV_DIR}/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
-Restart=always
+User=$REAL_USER
+Group=$REAL_GROUP
+SupplementaryGroups=video dialout
+WorkingDirectory=$PI_DIR
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=$PI_DIR
+ExecStart=$VENV_DIR/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
 RestartSec=3
-
+TimeoutStartSec=30
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Reload systemd and enable services
 systemctl daemon-reload
-systemctl enable mediamtx.service
-systemctl enable wombot.service
+systemctl enable mediamtx.service wombot.service
+systemctl restart mediamtx.service
+systemctl restart wombot.service
+sleep 2
 
-success "Systemd services enabled for automatic startup on boot."
+log "Verification"
+systemctl --no-pager --full status mediamtx.service || true
+systemctl --no-pager --full status wombot.service || true
+ss -lntup | grep -E ':(8000|8554|8888|8889)\b' || true
 
-# ----------------------------
-# Finish
-# ----------------------------
-echo
-echo "============================================================"
-echo " Wombot full system installation complete!"
-echo "============================================================"
-echo
-echo "• Wi-Fi AP Name: Wombot (Password: wombot123)"
-echo "• MediaMTX RTSP Stream: rtsp://<pi-ip>:8554/camera"
-echo "• FastAPI Backend: http://<pi-ip>:8000"
-echo
-echo "Reboot your Raspberry Pi to activate the Access Point and services."
-echo "============================================================"
+cat <<EOF
+
+Wombot installation/configuration complete.
+Repository:      $REPO_DIR
+Pi application:  $PI_DIR
+Wi-Fi:           $AP_SSID
+AP address:      $AP_ADDRESS
+Control page:    http://10.42.0.1:8000/control
+WebRTC player:   http://10.42.0.1:8889/camera
+RTSP publisher:  rtsp://127.0.0.1:8554/camera
+
+Reboot to apply group membership and test AP autoconnect:
+  sudo reboot
+
+Diagnostics:
+  sudo systemctl status wombot mediamtx
+  sudo journalctl -u wombot -n 80 --no-pager
+  sudo journalctl -u mediamtx -n 80 --no-pager
+
+The backend must launch FFmpeg on Camera ON and publish to rtsp://127.0.0.1:8554/camera.
+EOF

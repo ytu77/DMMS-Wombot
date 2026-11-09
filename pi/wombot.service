@@ -1,0 +1,21 @@
+# Template only: replace USERNAME with the Linux account name.
+[Unit]
+Description=Wombot FastAPI backend
+Wants=network-online.target mediamtx.service
+After=network-online.target mediamtx.service
+
+[Service]
+Type=simple
+User=USERNAME
+Group=USERNAME
+SupplementaryGroups=video dialout
+WorkingDirectory=/home/USERNAME/DMMS-Wombot/pi
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/USERNAME/DMMS-Wombot/pi
+ExecStart=/home/USERNAME/DMMS-Wombot/pi/.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

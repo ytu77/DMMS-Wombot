@@ -1,0 +1,21 @@
+
+[Unit]
+Description=Wombot FastAPI backend
+Wants=network-online.target mediamtx.service
+After=network-online.target mediamtx.service
+
+[Service]
+Type=simple
+User=team_wombot
+Group=team_wombot
+SupplementaryGroups=video dialout
+WorkingDirectory=/home/team_wombot/DMMS-Wombot/pi
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/team_wombot/DMMS-Wombot/pi
+ExecStart=/home/team_wombot/DMMS-Wombot/pi/.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

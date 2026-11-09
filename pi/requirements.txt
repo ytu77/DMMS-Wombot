@@ -1,3 +1,4 @@
+# Add every third-party Python dependency imported by pi/backend.
 fastapi
 uvicorn[standard]
 pyserial
