@@ -1,4 +1,43 @@
-.venv/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Local configuration and credentials
 .env
+.env.*
+!.env.example
+config/*.local.*
+config/*.local/
+
+# Logs
+*.log
+logs/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Raspberry Pi / runtime files
+*.pid
+*.sock
+
+# Arduino / PlatformIO
+.pio/
+build/
+*.elf
+*.bin
+*.hex
+*.map
