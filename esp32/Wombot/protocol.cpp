@@ -214,10 +214,28 @@ void handleMessage(char *message)
 
     if (strcmp(cmd, "servos") == 0)
     {
-        int pan = args["pan_deg"] | 90;
-        int tilt = args["tilt_deg"] | 90;
-        servoMotor1.write(constrain(180 - pan, 0, 180));
-        servoMotor2.write(constrain(135 - tilt, 45, 135));
+        if (currentMode == MODE_INTERACTIVE || isTransitioning || currentMode == MODE_AUTOMATIC)
+        {
+            sendAck(id, "rejected", "MODE_LOCKOUT", "Servo adjustments strictly blocked outside manual control tracking profiles");
+            return;
+        }
+
+        if (args.isNull() || !isJsonNumber(args["pan_deg"]) || !isJsonNumber(args["tilt_deg"]))
+        {
+            sendAck(id, "rejected", "INVALID_ARGUMENT", "Servos require numeric pan_deg and tilt_deg");
+            return;
+        }
+
+        int pan = args["pan_deg"].as<int>();
+        int tilt = args["tilt_deg"].as<int>();
+
+        // Safeguard angles to normal structural limits
+        pan = constrain(180 - pan, 0, 180);
+        tilt = constrain(135 - tilt, 45, 135);
+
+        servoMotor1.write(pan);
+        servoMotor2.write(tilt);
+
         sendAck(id, "accepted");
         return;
     }

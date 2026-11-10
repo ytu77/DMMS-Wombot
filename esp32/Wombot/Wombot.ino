@@ -10,6 +10,15 @@ Motor motors[4] = {
     {M3_DIR, M3_PWM, false},
     {M4_DIR, M4_PWM, false}};
 
+volatile long pulseCounts[4] = {0, 0, 0, 0};
+void IRAM_ATTR isrMotor0() { pulseCounts[0]++; }
+void IRAM_ATTR isrMotor1() { pulseCounts[1]++; }
+void IRAM_ATTR isrMotor2() { pulseCounts[2]++; }
+void IRAM_ATTR isrMotor3() { pulseCounts[3]++; }
+void (*isrTable[4])() = {isrMotor0, isrMotor1, isrMotor2, isrMotor3};
+unsigned long previousMillis = 0;
+const long interval = 1000; // Calculate RPM every 1000 ms (1 second)
+
 Servo servoMotor1;
 Servo servoMotor2;
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -32,18 +41,18 @@ void setup()
 {
     Serial.begin(115200);
 
-    for (int i = 0; i < 4; i++)
-    {
-        pinMode(motors[i].dirPin, OUTPUT);
-        pinMode(motors[i].pwmPin, OUTPUT);
-        pinMode(i == 0 ? M1_FG : i == 1 ? M2_FG
-                             : i == 2   ? M3_FG
-                                        : M4_FG,
-                INPUT);
+    // for (int i = 0; i < 4; i++)
+    // {
+    //     pinMode(motors[i].dirPin, OUTPUT);
+    //     pinMode(motors[i].pwmPin, OUTPUT);
+    //     pinMode(i == 0 ? M1_FG : i == 1 ? M2_FG
+    //                          : i == 2   ? M3_FG
+    //                                     : M4_FG,
+    //             INPUT);
 
-        digitalWrite(motors[i].dirPin, LOW);
-        digitalWrite(motors[i].pwmPin, HIGH);
-    }
+    //     digitalWrite(motors[i].dirPin, LOW);
+    //     digitalWrite(motors[i].pwmPin, HIGH);
+    // }
 
     // stopMotors();
 
@@ -62,6 +71,20 @@ void setup()
         strip.setPixelColor(i, strip.Color(255, 0, 255));
     }
     strip.show();
+
+    for (int i = 0; i < 4; i++)
+    {
+        pinMode(motors[i].dirPin, OUTPUT);
+        pinMode(motors[i].pwmPin, OUTPUT);
+        pinMode(i == 0 ? M1_FG : i == 1 ? M2_FG
+                             : i == 2   ? M3_FG
+                                        : M4_FG,
+                INPUT);
+
+        digitalWrite(motors[i].dirPin, LOW);
+        digitalWrite(motors[i].pwmPin, HIGH);
+        attachInterrupt(digitalPinToInterrupt(motors[i].fgPin), isrTable[i], RISING);
+    }
 
     Serial.println("{\"type\":\"ready\"}");
 }
@@ -96,4 +119,32 @@ void loop()
 
     // 4. Update LED Color Space Configurations
     runLightingEngine();
+
+    unsigned long currentMillis = millis();
+
+    // 5. Calculate motor speeds
+    // Check if 1 second has passed without using delay()
+    if (currentMillis - previousMillis >= interval)
+    {
+        float dt = (currentMillis - previousMillis) / 1000.0;
+        previousMillis = currentMillis;
+
+        // Safely copy and reset the pulse count
+        double velocities[4] = {0.0, 0.0, 0.0, 0.0};
+
+        noInterrupts();
+        for (int i = 0; i < 4; i++)
+        {
+            velocities[i] = (double(pulseCounts[i]) / 54.0) * (60.0 / dt);
+            pulseCounts[i] = 0;
+        }
+        interrupts();
+
+        char jsonBuffer[128];
+        snprintf(jsonBuffer, sizeof(jsonBuffer),
+                 "{\"telemetry\":{\"rpm\":[%.2f,%.2f,%.2f,%.2f]}}",
+                 velocities[0], velocities[1], velocities[2], velocities[3]);
+
+        Serial.println(jsonBuffer);
+    }
 }
