@@ -155,25 +155,101 @@ void handleMessage(char *message)
 
     if (strcmp(cmd, "drive") == 0)
     {
-        if (estopLatched || currentMode == MODE_INTERACTIVE || isTransitioning || currentMode == MODE_AUTOMATIC)
+        if (estopLatched)
         {
             stopMotors();
-            sendAck(id, "rejected", "LOCKOUT", "Drive blocked");
+            driveCommandReceived = false;
+
+            sendAck(
+                id, "rejected", "ESTOP_LATCHED",
+                "Clear emergency stop before driving");
             return;
         }
-        float fl = args["fl"] | 0.0f;
-        float fr = args["fr"] | 0.0f;
-        float rl = args["rl"] | 0.0f;
-        float rr = args["rr"] | 0.0f;
+
+        // Core Lockout Checks: Block active wheel movements when robot safety windows are executing
+        if (currentMode == MODE_INTERACTIVE)
+        {
+            stopMotors();
+            driveCommandReceived = false;
+            sendAck(id, "rejected", "MODE_LOCKOUT", "Motors locked out during Interactive maintenance mode");
+            return;
+        }
+        if (isTransitioning)
+        {
+            stopMotors();
+            driveCommandReceived = false;
+            sendAck(id, "rejected", "TRANSITION_LOCKOUT", "Commands blocked during safe 3-second transition delay");
+            return;
+        }
+        if (currentMode == MODE_AUTOMATIC)
+        {
+            sendAck(id, "rejected", "AUTO_LOCKOUT", "Manual teleoperation commands blocked during Automatic tracking loops");
+            return;
+        }
+
+        if (args.isNull())
+        {
+            stopMotors();
+            driveCommandReceived = false;
+            sendAck(id, "rejected", "INVALID_ARGUMENT", "Drive args missing");
+            return;
+        }
+
+        float fl = 0.0f, fr = 0.0f, rl = 0.0f, rr = 0.0f;
+
+        // Check if handling consolidated inputs from frontend modifications
+        if (isJsonNumber(args["throttle"]) && isJsonNumber(args["steering"]))
+        {
+            float throttle = args["throttle"].as<float>();
+            float steering = args["steering"].as<float>();
+
+            // Differential Steering Mixer Algorithm
+            fl = throttle - steering;
+            fr = throttle + steering;
+            rl = throttle - steering;
+            rr = throttle + steering;
+        }
+        // Fallback: Handle raw individual wheel arrays if provided
+        else if (isJsonNumber(args["fl"]) && isJsonNumber(args["fr"]) &&
+                 isJsonNumber(args["rl"]) && isJsonNumber(args["rr"]))
+        {
+            fl = args["fl"].as<float>();
+            fr = args["fr"].as<float>();
+            rl = args["rl"].as<float>();
+            rr = args["rr"].as<float>();
+        }
+        else
+        {
+            stopMotors();
+            driveCommandReceived = false;
+            sendAck(id, "rejected", "INVALID_ARGUMENT", "Invalid wheel or throttle parameters");
+            return;
+        }
+
+        // Verify constraints and numbers
+        if (!isfinite(fl) || !isfinite(fr) || !isfinite(rl) || !isfinite(rr))
+        {
+            stopMotors();
+            driveCommandReceived = false;
+            sendAck(id, "rejected", "OUT_OF_RANGE", "Commands must be finite numbers");
+            return;
+        }
+
+        // Direct Clamping Safeguard
+        fl = constrain(fl, -1.0f, 1.0f);
+        fr = constrain(fr, -1.0f, 1.0f);
+        rl = constrain(rl, -1.0f, 1.0f);
+        rr = constrain(rr, -1.0f, 1.0f);
 
         setMotor(0, fl);
-        setMotor(1, fr);
-        setMotor(2, rl);
-        setMotor(3, rr);
+        setMotor(1, rl);
+        setMotor(2, rr);
+        setMotor(3, fr);
+
         lastDriveCommand = millis();
         driveCommandReceived = true;
+
         sendAck(id, "accepted");
-        return;
     }
 
     if (strcmp(cmd, "stop") == 0)

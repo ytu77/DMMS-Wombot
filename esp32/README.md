@@ -1,6 +1,6 @@
 # DMMS-Wombot — ESP32 Motor & Sensor Node
 
-This directory contains the firmware for the **ESP32 Microcontroller** powering the DMMS-Wombot robot. The ESP32 serves as the lower-level hardware controller, managing motor drivers, wheel encoders, sensor telemetry, and serial communications with the Raspberry Pi host.
+This directory contains the firmware for the **ESP32 Microcontroller** powering the DMMS-Wombot robot. The ESP32 serves as the lower-level hardware controller, managing motor drivers, wheel encoders, sensor telemetry, and serial communications with the Raspberry Pi host. The contents of DMMS_teleop are the scripts that run on the ESP32 currently through Arduino IDE and have been tested to work. The contents of Wombot are supposed to be the same as DMMS_teleop except for being organised into different files to make it easier to navigate. However, the code has not been properly tested like the one in DMMS_teleop, so it may need some troubleshooting.
 
 ---
 

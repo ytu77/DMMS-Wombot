@@ -5,8 +5,8 @@
 
 // Global Object Instances
 Motor motors[4] = {
-    {M1_DIR, M1_PWM, false},
-    {M2_DIR, M2_PWM, false},
+    {M1_DIR, M1_PWM, true},
+    {M2_DIR, M2_PWM, true},
     {M3_DIR, M3_PWM, false},
     {M4_DIR, M4_PWM, false}};
 
